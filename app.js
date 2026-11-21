@@ -13,25 +13,17 @@
     get: function (k, d) { try { var v = localStorage.getItem("wn_" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set: function (k, v) { try { localStorage.setItem("wn_" + k, JSON.stringify(v)); } catch (e) {} }
   };
-
-  function guessLang() {
-    var n = String(navigator.language || "de").slice(0, 2).toLowerCase();
-    return IDX[n] != null ? n : "de";
-  }
-  function newDraft() {
-    return { services: [], obj: "flat", area: "", floor: 0, elevator: false, mode: "onsite", date: "", time: "", name: "", phone: "", address: "", note: "" };
-  }
+  function guessLang() { var n = String(navigator.language || "de").slice(0, 2).toLowerCase(); return IDX[n] != null ? n : "de"; }
+  function newDraft() { return { services: [], obj: "flat", area: "", floor: 0, elevator: false, mode: "onsite", date: "", time: "", name: "", phone: "", address: "", note: "" }; }
 
   var S = {
     lang: LS.get("lang", null) || guessLang(),
     screen: "home", step: 1, orderId: null,
     draft: Object.assign(newDraft(), LS.get("draft", {})),
-    photos: [],
-    query: "", filter: "all",
-    settings: Object.assign({ auto: false, rate: 1 }, LS.get("settings", {})),
-    orders: LS.get("orders", []),
-    recent: LS.get("recent", []),
-    convo: [], listening: false, tip: -1, sheet: false
+    photos: [], query: "", filter: "all",
+    settings: Object.assign({ auto: false, rate: 1, theme: "night", accent: "auto" }, LS.get("settings", {})),
+    orders: LS.get("orders", []), recent: LS.get("recent", []),
+    convo: [], listening: false, tip: -1, sheet: false, lightbox: -1
   };
   if (IDX[S.lang] == null) S.lang = "de";
 
@@ -41,11 +33,16 @@
     if (vars) for (var v in vars) s = s.split("{" + v + "}").join(vars[v]);
     return s;
   }
-  function de(k) { return T[k] ? T[k][0] : k; }
+  function plain(s) { return String(s).replace(/­/g, ""); }        // ohne weiche Trennstriche (für Vorlesen, WhatsApp)
+  function de(k) { return T[k] ? plain(T[k][0]) : k; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function L() { for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === S.lang) return LANGS[i]; return LANGS[0]; }
-  function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ًͯ-ٟ]/g, ""); }
+  function norm(s) {
+    return String(s || "").replace(/­/g, "").replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x660); })
+      .toLowerCase().normalize("NFD").replace(/[̀-ًͯ-ٰٟ]/g, "").replace(/[إأآ]/g, "ا");
+  }
   function saveDraft() { LS.set("draft", S.draft); }
+  function saveSettings() { LS.set("settings", S.settings); }
 
   var P = {
     back: '<path d="m15 18-6-6 6-6"/>', chev: '<path d="m9 18 6-6-6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
@@ -70,7 +67,8 @@
     video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/>',
     check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>',
     trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
-    send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>'
+    send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+    palette: '<path d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A5.6 5.6 0 0 0 22 9.8C22 5.5 17.5 2 12 2z"/><circle cx="7.5" cy="11.5" r="1.3"/><circle cx="10.5" cy="7" r="1.3"/><circle cx="15.5" cy="7.5" r="1.3"/>'
   };
   function ic(n, s, cls) { s = s || 22; return '<svg class="ic ' + (cls || "") + '" width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + P[n] + '</svg>'; }
 
@@ -80,17 +78,52 @@
   ];
   var OBJECTS = ["flat", "house", "cellar", "office"];
   var TIMES = ["08:00", "10:00", "12:00", "14:00", "16:00"];
+  var VEHICLE = [["links", "v_left"], ["rechts", "v_right"], ["vorne", "v_front"], ["hinten", "v_back"]];
+  function vimg(i) { return "bilder/fahrzeug-" + VEHICLE[i][0] + ".jpg"; }
 
+  /* Logo: einfarbig (ohne Verläufe) – wird auf allen Handys richtig angezeigt und passt sich dem Design an */
   function logo() {
-    return '<svg viewBox="170 50 700 300" role="img" aria-label="WN Entrümpelung"><defs>' +
-      '<linearGradient id="wnsv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#C9CFD8"/><stop offset=".55" stop-color="#8E97A4"/><stop offset="1" stop-color="#E8ECF1"/></linearGradient>' +
-      '<linearGradient id="wnbl" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1D4ED8"/><stop offset="1" stop-color="#60A5FA"/></linearGradient></defs>' +
-      '<path d="M470,330 C300,352 160,322 178,250 C192,200 258,170 330,160 C252,192 214,238 230,278 C250,318 352,330 470,330 Z" fill="url(#wnbl)"/>' +
-      '<path d="M540,130 V88 H564 V144" fill="url(#wnsv)"/>' +
-      '<polyline points="228,172 420,60 612,172" fill="none" stroke="url(#wnsv)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<text x="420" y="318" text-anchor="middle" font-family="Montserrat,sans-serif" font-weight="900" font-size="190" fill="url(#wnsv)" letter-spacing="-8" direction="ltr">WN</text>' +
-      '<rect x="604" y="178" width="158" height="122" rx="6" fill="url(#wnsv)"/><path d="M766,212 H818 L854,256 V300 H766 Z" fill="url(#wnsv)"/>' +
-      '<circle cx="646" cy="304" r="22" fill="#111" stroke="#C9CFD8" stroke-width="4"/><circle cx="814" cy="304" r="22" fill="#111" stroke="#C9CFD8" stroke-width="4"/></svg>';
+    var s = 'style="fill:var(--logo)"', a = 'style="fill:var(--logoAcc)"';
+    return '<svg viewBox="170 50 700 300" role="img" aria-label="WN Entrümpelung">' +
+      '<path ' + a + ' d="M470,330 C300,352 160,322 178,250 C192,200 258,170 330,160 C252,192 214,238 230,278 C250,318 352,330 470,330 Z"/>' +
+      '<path ' + s + ' d="M540,130 V88 H564 V144"/>' +
+      '<polyline points="228,172 420,60 612,172" style="fill:none;stroke:var(--logo)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<rect ' + s + ' x="404" y="98" width="13" height="13"/><rect ' + s + ' x="420" y="98" width="13" height="13"/><rect ' + s + ' x="404" y="114" width="13" height="13"/><rect ' + s + ' x="420" y="114" width="13" height="13"/>' +
+      '<text ' + s + ' x="420" y="318" text-anchor="middle" font-family="Montserrat,Arial Black,sans-serif" font-weight="900" font-size="190" letter-spacing="-8" direction="ltr">WN</text>' +
+      '<rect ' + s + ' x="604" y="178" width="158" height="122" rx="6"/><path ' + s + ' d="M766,212 H818 L854,256 V300 H766 Z"/>' +
+      '<circle cx="646" cy="304" r="22" style="fill:var(--bg);stroke:var(--logo)" stroke-width="7"/><circle cx="814" cy="304" r="22" style="fill:var(--bg);stroke:var(--logo)" stroke-width="7"/></svg>';
+  }
+
+  /* ---------- Designs & Farben ---------- */
+  var THEMES = {
+    night:    { dark: true,  accent: "blue",  pv: ["#0B0D11", "#161A21", "#D6DBE2"] },
+    light:    { dark: false, accent: "blue",  pv: ["#F4F6FA", "#FFFFFF", "#0F2A4A"] },
+    silver:   { dark: false, accent: "blue",  pv: ["#E3E7ED", "#F5F7FA", "#0B1B33"] },
+    navy:     { dark: true,  accent: "amber", pv: ["#0B1B33", "#12284A", "#E8EDF4"] },
+    contrast: { dark: true,  accent: null,    pv: ["#000000", "#000000", "#FFFFFF"] }
+  };
+  var ACCENTS = {
+    blue:   { a: "#2563EB", dl: "#93C5FD", dbg: "#0F2547", ll: "#1D4ED8", lbg: "#DBEAFE", on: "#FFFFFF" },
+    teal:   { a: "#0E7C86", dl: "#5EEAD4", dbg: "#0B2F33", ll: "#0B5F67", lbg: "#CCFBF1", on: "#FFFFFF" },
+    green:  { a: "#15803D", dl: "#86EFAC", dbg: "#0F2E1B", ll: "#166534", lbg: "#DCFCE7", on: "#FFFFFF" },
+    orange: { a: "#C2410C", dl: "#FDBA74", dbg: "#3A1D0B", ll: "#9A3412", lbg: "#FFEDD5", on: "#FFFFFF" },
+    red:    { a: "#DC2626", dl: "#FCA5A5", dbg: "#3A1212", ll: "#B91C1C", lbg: "#FEE2E2", on: "#FFFFFF" },
+    purple: { a: "#7C3AED", dl: "#C4B5FD", dbg: "#24124A", ll: "#6D28D9", lbg: "#EDE9FE", on: "#FFFFFF" },
+    amber:  { a: "#F59E0B", dl: "#FCD34D", dbg: "#3A2A06", ll: "#B45309", lbg: "#FEF3C7", on: "#111827" }
+  };
+  var ACCENT_LIST = ["blue", "teal", "green", "orange", "red", "purple"];
+  function applyTheme() {
+    var th = THEMES[S.settings.theme] ? S.settings.theme : "night", root = document.documentElement, st = root.style;
+    root.setAttribute("data-theme", th);
+    ["--accent", "--accent2", "--accentL", "--accentBg", "--onAccent", "--logoAcc"].forEach(function (p) { st.removeProperty(p); });
+    if (th !== "contrast") {
+      var key = S.settings.accent !== "auto" && ACCENTS[S.settings.accent] ? S.settings.accent : THEMES[th].accent;
+      var A = ACCENTS[key], dark = THEMES[th].dark;
+      st.setProperty("--accent", A.a); st.setProperty("--accent2", A.a);
+      st.setProperty("--accentL", dark ? A.dl : A.ll); st.setProperty("--accentBg", dark ? A.dbg : A.lbg);
+      st.setProperty("--onAccent", A.on); st.setProperty("--logoAcc", dark ? A.dl === "#93C5FD" ? "#3B82F6" : A.a : A.a);
+    }
+    var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", THEMES[th].pv[0]);
   }
 
   /* ---------- Sprachausgabe (Ansage) ---------- */
@@ -107,7 +140,7 @@
     if (!hasTTS) { toast(t("noTts")); return; }
     try {
       window.speechSynthesis.cancel();
-      var u = new SpeechSynthesisUtterance(String(text).replace(/\n/g, " ").slice(0, 3000));
+      var u = new SpeechSynthesisUtterance(plain(text).replace(/\n/g, " ").slice(0, 3000));
       u.lang = L().locale;
       var v = pickVoice(u.lang); if (v) u.voice = v;
       u.rate = S.settings.rate || 1;
@@ -116,20 +149,85 @@
   }
   function stopSpeak() { try { if (hasTTS) window.speechSynthesis.cancel(); } catch (e) {} }
   function screenSay() {
-    if (S.screen === "home") return t("say_home");
+    var m = { home: "say_home", orders: "say_orders", order: "say_orders", search: "say_search", help: "say_help", ansage: "say_ansage" };
     if (S.screen === "request") return t("say_s" + S.step);
-    if (S.screen === "orders" || S.screen === "order") return t("say_orders");
-    if (S.screen === "search") return t("say_search");
-    if (S.screen === "help") return t("say_help");
-    if (S.screen === "ansage") return t("say_ansage");
-    return "";
+    return m[S.screen] ? t(m[S.screen]) : "";
   }
   function readText() {
     var s = screenSay();
-    if (S.screen === "home") s = t("heroTitle") + ". " + t("heroText") + " " + s;
+    if (S.screen === "home") s = t("heroTitle") + ". " + t("heroText") + " " + s + " " + t("voiceHint") + ".";
     if (S.screen === "order") { var o = findOrder(S.orderId); if (o) s += " " + t("orderNo", { n: o.no }) + ". " + t("st" + o.status) + ". " + t("waitOffer"); }
     return s;
   }
+
+  /* ---------- Auftrag per Sprache: versteht Leistung, Objekt, m², Etage, Aufzug (alle 8 Sprachen) ---------- */
+  // Muster: "wort" = ganzes Wort, "wort*" = Wortanfang, "*wort" = Wortende, Wörter mit Leerzeichen = Wortgruppe
+  var KW_SVC = {
+    household: ["haushalt*", "wohnungsaufl*", "wohnungsraum*", "nachlass*", "*haushaltsauflosung", "house clearance", "household*", "flat clearance", "ev bosalt*", "ev esya*", "تفريغ منزل", "تفريغ المنازل", "تفريغ شقة", "تفريغ البيت", "расчистка квартир*", "расчистк*", "вывоз мебел*", "vaciado de vivienda*", "vaciar piso", "vaciar casa", "vaciado*", "debarras de logement", "debarras*", "woningontruim*", "inboedel*", "ontruim*"],
+    office: ["buro*", "*buroauflosung", "gewerbe*", "office", "office clearance", "ofis*", "مكتب", "المكتب", "المكاتب", "офис*", "oficina*", "bureau*", "kantoor*", "bedrijfsruimte*"],
+    disposal: ["entsorg*", "sperrmull*", "mull*", "*mull", "disposal", "rubbish", "waste", "junk", "atik*", "cop*", "التخلص", "نفايات", "утилиз*", "мусор*", "residuo*", "basura*", "dechet*", "encombrant*", "evacuation*", "afval*", "grofvuil*"],
+    cleaning: ["reinig*", "putz*", "besenrein*", "clean*", "temizl*", "تنظيف", "уборк*", "limpi*", "nettoy*", "schoonm*", "bezemschoon*"],
+    transport: ["transport*", "abtransport*", "umzug*", "truck", "tasi*", "نقل", "перевоз*", "вывез*", "вывоз*", "demenag*", "verhuiz*"],
+    basement: ["keller*", "dachboden*", "garage*", "basement*", "attic*", "cellar*", "bodrum*", "cati*", "قبو", "القبو", "علية", "العلية", "مرآب", "подвал*", "чердак*", "гараж*", "sotano*", "desvan*", "garaje*", "cave", "caves", "grenier*", "kelder*", "zolder*"]
+  };
+  var KW_OBJ = {
+    flat: ["wohnung", "*wohnung", "apartment", "flat", "daire*", "شقة", "الشقة", "شقتي", "квартир*", "piso", "apartamento", "appartement", "woning"],
+    house: ["haus", "*haus", "hauses", "house", "ev", "evi", "evim", "mustakil*", "منزل", "المنزل", "بيت", "البيت", "дом", "дома", "доме", "casa", "maison", "huis", "woonhuis"],
+    cellar: ["keller", "*keller", "basement", "cellar", "bodrum*", "قبو", "القبو", "подвал*", "sotano", "cave", "kelder"],
+    office: ["buro", "office", "ofis*", "مكتب", "المكتب", "офис*", "oficina", "bureau", "kantoor"]
+  };
+  var LIFT_NO = ["ohne aufzug", "kein aufzug", "keinen aufzug", "ohne lift", "kein lift", "ohne fahrstuhl", "no lift", "no elevator", "without lift", "without elevator", "asansorsuz", "asansor yok", "بدون مصعد", "لا يوجد مصعد", "без лифта", "нет лифта", "sin ascensor", "sans ascenseur", "pas d ascenseur", "geen lift", "zonder lift"];
+  var LIFT = ["aufzug*", "*aufzug", "fahrstuhl*", "lift*", "elevator*", "asansor*", "مصعد", "المصعد", "лифт*", "ascensor*", "ascenseur*"];
+  var CREATE = ["erstell", "neue", "neuen", "anleg", "create", "new", "olustur", "yeni", "انشاء", "جديد", "созда", "нов", "crear", "nuevo", "nueva", "creer", "nouvel", "nouvelle", "maak", "nieuw", "aanmaken"];
+  var FLOOR = "etage|stock|stockwerk|og|obergeschoss|floor|kat|katta|الطابق|طابق|этаж|этаже|planta|piso|verdieping|verd";
+  var GROUND = ["erdgeschoss", "parterre", "ground floor", "zemin", "الطابق الارضي", "ارضي", "первый этаж", "цокол", "planta baja", "bajo", "rez de chaussee", "rez-de-chaussee", "rdc", "begane grond"];
+
+  function tokens(n) { return n.split(/[^0-9a-z\u00C0-\u024F\u0400-\u04FF\u0620-\u064A\u0671-\u06D3\u0131\u015F\u011F\u00B2]+/).filter(Boolean); }
+  function matchKw(n, toks, kw) {
+    kw = norm(kw);
+    if (kw.indexOf(" ") >= 0) { var ph = kw.replace(/\*/g, ""); return (" " + toks.join(" ") + " ").indexOf(" " + ph + (kw.slice(-1) === "*" ? "" : " ")) >= 0; }
+    var pre = kw.charAt(kw.length - 1) === "*", suf = kw.charAt(0) === "*", core = kw.replace(/\*/g, "");
+    for (var i = 0; i < toks.length; i++) {
+      var w = toks[i];
+      if (pre && suf ? w.indexOf(core) >= 0 : pre ? w.indexOf(core) === 0 : suf ? w.length > core.length && w.slice(-core.length) === core : w === core) return true;
+    }
+    return false;
+  }
+  function anyKw(n, toks, list) { for (var i = 0; i < list.length; i++) if (matchKw(n, toks, list[i])) return true; return false; }
+  function parseOrder(text) {
+    var n = norm(text), toks = tokens(n), r = { services: [], obj: null, area: null, floor: null, elevator: null };
+    for (var s in KW_SVC) if (anyKw(n, toks, KW_SVC[s])) r.services.push(s);
+    for (var o in KW_OBJ) if (anyKw(n, toks, KW_OBJ[o])) { r.obj = o; break; }
+    var am = n.match(/(\d+(?:[.,]\d+)?)\s*(?:m²|m2|qm|quadrat\w*|square|sq\s*m|sqm|metrekare|metre\s*kare|متر|م2|кв\w*|metros?|metres?|meters?|vierkante|m\b)/);
+    if (am) r.area = am[1].replace(",", ".");
+    if (anyKw(n, toks, GROUND)) r.floor = 0;
+    else {
+      var fa = n.match(new RegExp("(\\d{1,2})\\s*(?:\\.|st|nd|rd|th|e|er|eme|°|º|-?[йм]|-?ий|-?ом)?\\s*(?:" + FLOOR + ")(?![a-z])"));
+      var fb = n.match(new RegExp("(?:^|[^a-z])(?:" + FLOOR + ")\\s*(?:nr\\.?|no\\.?|nummer|number|رقم)?\\s*(\\d{1,2})(?!\\d)"));
+      var f = fa || fb; if (f) r.floor = Math.min(30, parseInt(f[1], 10));
+    }
+    if (anyKw(n, toks, LIFT_NO)) r.elevator = false; else if (anyKw(n, toks, LIFT)) r.elevator = true;
+    r.found = !!(r.services.length || r.area != null || (r.obj && (r.floor != null || r.elevator != null)));
+    return r;
+  }
+  function describe(r) {
+    var parts = r.services.map(function (s) { return plain(t("svc_" + s)); });
+    if (r.obj) parts.push(t("obj_" + r.obj));
+    if (r.area != null) parts.push(r.area + " m²");
+    if (r.floor != null) parts.push(t("floor") + " " + (r.floor ? r.floor : t("ground")));
+    if (r.elevator != null) parts.push(r.elevator ? t("elevator") : t("noLift"));
+    return parts.join(", ");
+  }
+  function applyOrder(r) {
+    var d = S.draft;
+    r.services.forEach(function (s) { if (d.services.indexOf(s) < 0) d.services.push(s); });
+    if (r.obj) d.obj = r.obj;
+    if (r.area != null) d.area = r.area;
+    if (r.floor != null) d.floor = r.floor;
+    if (r.elevator != null) d.elevator = r.elevator;
+    saveDraft();
+  }
+  window.WN_parseOrder = parseOrder; // für Tests
 
   /* ---------- Spracheingabe ---------- */
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition, rec = null;
@@ -156,11 +254,16 @@
   }
   function handleUtterance(text) {
     text = String(text || "").trim(); if (!text) return;
-    var reply, action;
-    if (hasKw(text, "kw_call")) { reply = t("r_call"); action = call; }
+    var n = norm(text), toks = tokens(n), reply, action, order = parseOrder(text);
+    if (hasKw(text, "kw_call") && !order.found) { reply = t("r_call"); action = call; }
+    else if (order.found) {
+      applyOrder(order);
+      reply = t("r_prepared", { x: describe(order) });
+      action = function () { S.step = 1; go("request", { force: true, silent: true }); };
+    }
+    else if (hasKw(text, "kw_offer") || anyKw(n, toks, CREATE.map(function (w) { return w + "*"; }))) { reply = t("r_offer"); action = function () { startRequest(); }; }
     else if (hasKw(text, "kw_help")) { reply = t("r_help"); action = function () { go("help"); }; }
     else if (hasKw(text, "kw_orders")) { reply = t("r_orders"); action = function () { go("orders"); }; }
-    else if (hasKw(text, "kw_offer")) { reply = t("r_offer"); action = function () { startRequest(); }; }
     else if (hasKw(text, "kw_home")) { reply = t("r_home"); action = function () { go("home"); }; }
     else { reply = t("r_search", { q: text }); action = function () { S.query = text; addRecent(text); go("search"); }; }
     S.convo.push({ who: "you", text: text }, { who: "wn", text: reply });
@@ -168,7 +271,7 @@
     if (S.screen !== "ansage") S.screen = "ansage";
     render();
     speak(reply);
-    setTimeout(action, 1400);
+    setTimeout(action, order.found ? 2200 : 1400);
   }
 
   /* ---------- Navigation ---------- */
@@ -178,7 +281,7 @@
       S.screen = screen;
       if (!opts.noHistory) try { history.pushState({ s: screen, step: S.step, id: S.orderId }, ""); } catch (e) {}
     }
-    S.sheet = false;
+    S.sheet = false; S.lightbox = -1;
     render();
     window.scrollTo(0, 0);
     if (S.settings.auto && !opts.silent) speak(screenSay());
@@ -187,7 +290,7 @@
   window.addEventListener("popstate", function (e) {
     var st = e.state || { s: "home" };
     S.screen = st.s || "home"; if (st.step) S.step = st.step; if (st.id) S.orderId = st.id;
-    S.sheet = false; S.tip = -1; render();
+    S.sheet = false; S.tip = -1; S.lightbox = -1; render();
   });
   function startRequest(svc) {
     if (svc && S.draft.services.indexOf(svc) < 0) S.draft.services.push(svc);
@@ -196,11 +299,7 @@
 
   /* ---------- Kontakt ---------- */
   function digits(s) { return String(s || "").replace(/[^\d+]/g, ""); }
-  function call() {
-    var p = digits(C.phone);
-    if (!p) { toast(t("noPhone")); return; }
-    location.href = "tel:" + p;
-  }
+  function call() { var p = digits(C.phone); if (!p) { toast(t("noPhone")); return; } location.href = "tel:" + p; }
   function whatsapp(text) {
     var p = digits(C.whatsapp || C.phone).replace(/^\+/, "").replace(/^00/, "");
     if (!p) { toast(t("noPhone")); return false; }
@@ -245,12 +344,15 @@
   }
 
   /* ---------- Bildschirme ---------- */
+  function headBtns(small) {
+    return '<button class="round" data-act="langsheet" data-tip="lang" aria-label="' + esc(t("language")) + ': ' + esc(L().name) + '">' + window.WN_FLAG(S.lang, small ? 24 : 26) + '</button>' +
+      '<button class="round" data-act="designsheet" data-tip="design" aria-label="' + esc(t("designTitle")) + '">' + ic("palette", 21) + '</button>' +
+      '<button class="round" data-act="read" data-tip="read" aria-label="' + esc(t("readAloud")) + '">' + ic("speaker", 20) + '</button>';
+  }
   function header() {
     return '<header class="top">' +
       '<button class="logo" data-go="home" aria-label="WN Entrümpelung – ' + esc(t("nav_home")) + '">' + logo() + '<span class="logo-sub">ENTRÜMPELUNG</span></button>' +
-      '<div class="acts">' +
-      '<button class="round" data-act="langsheet" data-tip="lang" aria-label="' + esc(t("language")) + ': ' + esc(L().name) + '">' + window.WN_FLAG(S.lang, 26) + '</button>' +
-      '<button class="round" data-act="read" data-tip="read" aria-label="' + esc(t("readAloud")) + '">' + ic("speaker", 21) + '</button>' +
+      '<div class="acts">' + headBtns() +
       '<button class="round" data-go="help" data-tip="help" aria-label="' + esc(t("nav_help")) + '">' + ic("help", 21) + '</button>' +
       '</div></header>';
   }
@@ -258,9 +360,7 @@
     return '<header class="bar">' +
       '<button class="round ghost" data-act="' + (backAct || "back") + '" aria-label="' + esc(t("back")) + '">' + ic("back", 22, "flip") + '</button>' +
       '<div class="grow">' + (sub ? '<span class="muted xs">' + esc(sub) + '</span>' : '') + '<h1>' + esc(title) + '</h1></div>' +
-      '<button class="round" data-act="langsheet" aria-label="' + esc(t("language")) + ': ' + esc(L().name) + '">' + window.WN_FLAG(S.lang, 24) + '</button>' +
-      '<button class="round" data-act="read" aria-label="' + esc(t("readAloud")) + '">' + ic("speaker", 20) + '</button>' +
-      '</header>';
+      '<div class="acts">' + headBtns(true) + '</div></header>';
   }
   function nav() {
     var items = [["home", "home", "nav_home"], ["request", "add", "nav_request"], ["orders", "list", "nav_orders"], ["help", "help", "nav_help"]];
@@ -276,17 +376,23 @@
     return header() + '<main>' +
       '<div class="searchbar" role="search" data-tip="search">' +
       '<button class="fake" data-go="search">' + ic("search", 20) + '<span>' + esc(t("searchPh")) + '</span></button>' +
-      '<button class="micbtn" data-act="voice" aria-label="' + esc(t("mic")) + '">' + ic("mic", 20) + '</button></div>' +
-      '<section class="card hero"><h1>' + esc(t("heroTitle")) + '</h1><p class="soft sm">' + esc(t("heroText")) + '</p>' +
+      '<button class="micbtn" data-act="voice" data-tip="mic" aria-label="' + esc(t("voiceOrder")) + '">' + ic("mic", 20) + '</button></div>' +
+      '<p class="vhint">' + ic("mic", 14) + esc(t("voiceHint")) + '</p>' +
+      '<section class="card hero">' +
+      '<button class="heroimg" data-act="photo" data-i="0" aria-label="' + esc(t("vehicle")) + '"><img src="' + vimg(0) + '" alt="WN Entrümpelung – ' + esc(t("vehicle")) + '" width="1000" height="287"></button>' +
+      '<h1>' + esc(t("heroTitle")) + '</h1><p class="soft sm">' + esc(t("heroText")) + '</p>' +
       '<button class="btn" data-act="newreq" data-tip="offer">' + ic("plus", 20) + esc(t("requestOffer")) + '</button>' +
       '<div class="row2"><button class="btn out" data-act="call">' + ic("phone", 18) + esc(t("call")) + '</button>' +
       '<button class="btn out" data-act="wa">' + ic("chat", 18) + esc(t("whatsapp")) + '</button></div></section>' +
       '<section style="display:flex;flex-direction:column;gap:12px"><h2 class="h2">' + esc(t("services")) + '</h2><div class="grid3">' +
-      SERVICES.map(function (s) { return '<button class="tile" data-act="svcstart" data-id="' + s.id + '">' + ic(s.icon, 28) + esc(t("svc_" + s.id)) + '</button>'; }).join("") +
+      SERVICES.map(function (s) { return '<button class="tile" data-act="svcstart" data-id="' + s.id + '">' + ic(s.icon, 28) + '<span>' + esc(t("svc_" + s.id)) + '</span></button>'; }).join("") +
       '</div></section>' +
-      (last ? '<button class="card" data-act="openorder" data-id="' + last.id + '" style="flex-direction:row;align-items:center;text-align:start;padding:14px 16px">' +
+      '<section style="display:flex;flex-direction:column;gap:12px"><h2 class="h2">' + esc(t("vehicle")) + '</h2><div class="gallery">' +
+      VEHICLE.map(function (v, i) { return '<button class="gal" data-act="photo" data-i="' + i + '"><img src="' + vimg(i) + '" alt="WN Entrümpelung – ' + esc(t(v[1])) + '" loading="lazy"><span>' + esc(t(v[1])) + '</span></button>'; }).join("") +
+      '</div></section>' +
+      (last ? '<button class="card lastcard" data-act="openorder" data-id="' + last.id + '">' +
         '<span class="ib">' + ic("list", 20) + '</span><span style="flex:1;display:flex;flex-direction:column;gap:3px"><span class="muted xs">' + esc(t("lastRequest")) + '</span>' +
-        '<b style="color:#fff;font-size:15px">' + esc(t("orderNo", { n: last.no })) + ' · ' + esc(t("st" + last.status)) + '</b></span>' + ic("chev", 20, "flip") + '</button>' : '') +
+        '<b>' + esc(t("orderNo", { n: last.no })) + ' · ' + esc(t("st" + last.status)) + '</b></span>' + ic("chev", 20, "flip") + '</button>' : '') +
       '<p class="note">' + esc(t("testNote")) + '</p>' +
       '</main>' + nav();
   }
@@ -298,7 +404,7 @@
     if (n === 1) {
       body =
         '<fieldset><legend>' + esc(t("servicesMulti")) + '</legend><div class="chips">' +
-        SERVICES.map(function (s) { var on = d.services.indexOf(s.id) >= 0; return '<button class="chip' + (on ? " on" : "") + '" aria-pressed="' + on + '" data-act="svc" data-id="' + s.id + '">' + (on ? ic("check", 16) : "") + esc(t("svc_" + s.id)) + '</button>'; }).join("") +
+        SERVICES.map(function (s) { var on = d.services.indexOf(s.id) >= 0; return '<button class="chip' + (on ? " on" : "") + '" aria-pressed="' + on + '" data-act="svc" data-id="' + s.id + '">' + (on ? ic("check", 16) : "") + esc(plain(t("svc_" + s.id))) + '</button>'; }).join("") +
         '</div></fieldset>' +
         '<fieldset><legend>' + esc(t("object")) + '</legend><div class="seg" role="radiogroup">' +
         OBJECTS.map(function (o) { var on = d.obj === o; return '<button role="radio" aria-checked="' + on + '" class="' + (on ? "on" : "") + '" data-act="obj" data-id="' + o + '">' + esc(t("obj_" + o)) + '</button>'; }).join("") +
@@ -307,7 +413,7 @@
         '<div class="field"><span class="lbl" id="fl">' + esc(t("floor")) + '</span><div class="stepper" role="group" aria-labelledby="fl">' +
         '<button data-act="floor" data-d="-1" aria-label="' + esc(t("less")) + '">−</button><span>' + (d.floor ? d.floor : esc(t("ground"))) + '</span>' +
         '<button data-act="floor" data-d="1" aria-label="' + esc(t("more")) + '">+</button></div></div></div>' +
-        '<label class="switch"><span class="tx"><b style="color:#fff;font-size:14px">' + esc(t("elevator")) + '</b><span class="muted xs">' + esc(t("elevatorHint")) + '</span></span>' +
+        '<label class="switch"><span class="tx"><b>' + esc(t("elevator")) + '</b><span class="muted xs">' + esc(t("elevatorHint")) + '</span></span>' +
         '<span class="tg"><input type="checkbox" data-field="elevator"' + (d.elevator ? " checked" : "") + '><i></i></span></label>' +
         '<div class="field"><span class="lbl">' + esc(t("photos")) + ' <span class="muted" style="font-weight:500">(' + esc(t("photosHint")) + ')</span></span><div class="photos">' +
         '<label class="addph">' + ic("camera", 26) + esc(t("addPhoto")) + '<input type="file" id="photoIn" accept="image/*" multiple class="sr"></label>' +
@@ -351,7 +457,7 @@
     return bar(t("orders"), "", "home") + '<main>' +
       (S.orders.length ? '<div class="list">' + S.orders.map(function (o) {
         return '<button class="item" data-act="openorder" data-id="' + o.id + '"><span class="ib g">' + ic("list", 20) + '</span><span class="tx"><span class="tt">' + esc(t("orderNo", { n: o.no })) + '</span>' +
-          '<span class="ds">' + esc(o.d.services.map(function (s) { return t("svc_" + s); }).join(", ")) + ' · ' + esc(t("st" + o.status)) + '</span></span>' + ic("chev", 18, "flip") + '</button>';
+          '<span class="ds">' + esc(o.d.services.map(function (s) { return plain(t("svc_" + s)); }).join(", ")) + ' · ' + esc(t("st" + o.status)) + '</span></span>' + ic("chev", 18, "flip") + '</button>';
       }).join("") + '</div>' : '<p class="soft" style="text-align:center;padding:30px 0">' + esc(t("noOrders")) + '</p>') +
       '<button class="btn" data-act="newreq">' + ic("plus", 20) + esc(t("newRequest")) + '</button></main>' + nav();
   }
@@ -359,16 +465,15 @@
   function scrOrder() {
     var o = findOrder(S.orderId);
     if (!o) return scrOrders();
-    var d = o.d, steps = [0, 1, 2, 3, 4];
-    var tl = '<ol class="timeline">' + steps.map(function (i) {
-      var cls = i < o.status ? "ok" : i === o.status ? (i === 0 ? "ok" : "now") : "";
-      if (i === 1 && o.status === 0) cls = "now";
-      return '<li class="' + cls + '"' + (cls === "now" ? ' aria-current="step"' : '') + '><span class="dot"><i>' + (cls === "ok" ? ic("check", 14) : "") + '</i><span></span></span><b style="font-size:14px;font-weight:' + (cls ? 700 : 500) + ';color:' + (cls ? "#fff" : "var(--muted)") + '">' + esc(t("st" + i)) + '</b></li>';
+    var d = o.d;
+    var tl = '<ol class="timeline">' + [0, 1, 2, 3, 4].map(function (i) {
+      var cls = i <= o.status ? "ok" : (i === o.status + 1 ? "now" : "");
+      return '<li class="' + cls + '"' + (cls === "now" ? ' aria-current="step"' : '') + '><span class="dot"><i>' + (cls === "ok" ? ic("check", 14) : "") + '</i><span></span></span><b>' + esc(t("st" + i)) + '</b></li>';
     }).join("") + '</ol>';
     var kv = [
-      [t("services"), d.services.map(function (s) { return t("svc_" + s); }).join(", ")],
+      [t("services"), d.services.map(function (s) { return plain(t("svc_" + s)); }).join(", ")],
       [t("object"), t("obj_" + d.obj) + (d.area ? " · " + d.area + " m²" : "")],
-      [t("floor"), (d.floor ? d.floor : t("ground")) + (d.elevator ? " · " + t("elevator") : "")],
+      [t("floor"), (d.floor ? d.floor : t("ground")) + " · " + (d.elevator ? t("elevator") : t("noLift"))],
       [t("st1"), t(d.mode === "video" ? "video" : "onsite") + " · " + fmtDate(d.date, true) + " · " + d.time],
       [t("name"), d.name], [t("phone"), d.phone], [t("address"), d.address],
       d.note ? [t("note"), d.note] : null,
@@ -382,18 +487,22 @@
       '</main>' + nav();
   }
 
+  var HELP = [
+    ["plus", "requestOffer", "h_offer_d"], ["mic", "voiceOrder", "h_voiceorder_d"], ["search", "search", "h_search_d"],
+    ["speaker", "ansage", "h_ansage_d"], ["globe", "language", "h_lang_d"], ["palette", "designTitle", "h_design_d"],
+    ["camera", "photos", "h_photos_d"], ["cal", "s2Title", "h_appt_d"], ["list", "nav_orders", "h_orders_d"],
+    ["chat", "contactT", "h_contact_d"], ["help", "faq1_t", "faq1_d"], ["help", "faq2_t", "faq2_d"]
+  ];
   function searchIndex() {
     var out = [];
     SERVICES.forEach(function (s) {
-      out.push({ cat: "services", icon: s.icon, cls: "", title: t("svc_" + s.id), desc: t("d_" + s.id), extra: de("svc_" + s.id) + " " + de("d_" + s.id), attrs: 'data-act="svcstart" data-id="' + s.id + '"' });
+      out.push({ cat: "services", icon: s.icon, cls: "", title: plain(t("svc_" + s.id)), desc: t("d_" + s.id), extra: de("svc_" + s.id) + " " + de("d_" + s.id), attrs: 'data-act="svcstart" data-id="' + s.id + '"' });
     });
     S.orders.forEach(function (o) {
-      var sv = o.d.services.map(function (s) { return t("svc_" + s) + " " + de("svc_" + s); }).join(" ");
-      out.push({ cat: "orders", icon: "list", cls: "g", title: t("orderNo", { n: o.no }), desc: o.d.services.map(function (s) { return t("svc_" + s); }).join(", ") + " · " + t("st" + o.status), extra: sv + " " + o.d.address + " " + o.no, attrs: 'data-act="openorder" data-id="' + o.id + '"' });
+      var sv = o.d.services.map(function (s) { return plain(t("svc_" + s)) + " " + de("svc_" + s); }).join(" ");
+      out.push({ cat: "orders", icon: "list", cls: "g", title: t("orderNo", { n: o.no }), desc: o.d.services.map(function (s) { return plain(t("svc_" + s)); }).join(", ") + " · " + t("st" + o.status), extra: sv + " " + o.d.address + " " + o.no, attrs: 'data-act="openorder" data-id="' + o.id + '"' });
     });
-    HELP.forEach(function (h) {
-      out.push({ cat: "help", icon: "help", cls: "a", title: t(h[1]), desc: t(h[2]), extra: de(h[1]) + " " + de(h[2]), attrs: 'data-go="help"' });
-    });
+    HELP.forEach(function (h) { out.push({ cat: "help", icon: "help", cls: "a", title: t(h[1]), desc: t(h[2]), extra: de(h[1]) + " " + de(h[2]), attrs: 'data-go="help"' }); });
     return out;
   }
   function results() {
@@ -405,8 +514,9 @@
       return words.every(function (w) { return hay.indexOf(w) >= 0; });
     });
     var html = "";
-    if (!words.length && S.recent.length) {
-      html += '<section style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px"><h2 class="h2">' + esc(t("recent")) + '</h2><div class="chips">' +
+    if (!words.length) {
+      html += '<button class="example" data-act="utter" data-text="' + esc(t("ex_order")) + '" style="margin-bottom:12px"><small>' + esc(t("voiceOrder")) + ' · ' + esc(t("exampleLbl")) + '</small>„' + esc(t("ex_order")) + '“</button>';
+      if (S.recent.length) html += '<section style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px"><h2 class="h2">' + esc(t("recent")) + '</h2><div class="chips">' +
         S.recent.map(function (r) { return '<button class="chip sm" data-act="recent" data-q="' + esc(r) + '">' + esc(r) + '</button>'; }).join("") + '</div></section>';
     }
     if (!list.length) return html + '<p class="soft" style="text-align:center;padding:24px 0">' + esc(t("noResults")) + '</p>';
@@ -423,24 +533,19 @@
   function scrSearch() {
     var f = [["all", "all"], ["services", "services"], ["orders", "nav_orders"], ["help", "nav_help"]];
     return '<header class="bar"><button class="round ghost" data-act="home" aria-label="' + esc(t("back")) + '">' + ic("back", 22, "flip") + '</button>' +
-      '<form class="searchbar" role="search" id="qform" style="flex:1;min-width:0;border-color:#3B82F6">' + ic("search", 20) +
+      '<form class="searchbar" role="search" id="qform" style="flex:1;min-width:0;border-color:var(--accent)">' + ic("search", 20) +
       '<input id="q" type="search" enterkeyhint="search" aria-label="' + esc(t("search")) + '" placeholder="' + esc(t("searchPh")) + '" value="' + esc(S.query) + '">' +
       (S.query ? '<button type="button" class="round ghost" style="width:40px;height:40px" data-act="clearq" aria-label="' + esc(t("clearInput")) + '">' + ic("x", 18) + '</button>' : '') +
-      '<button type="button" class="micbtn" data-act="voice" aria-label="' + esc(t("mic")) + '">' + ic("mic", 19) + '</button></form></header>' +
+      '<button type="button" class="micbtn" data-act="voice" aria-label="' + esc(t("voiceOrder")) + '">' + ic("mic", 19) + '</button></form></header>' +
       '<div class="chips" style="padding:0 20px 8px">' + f.map(function (x) { return '<button class="chip sm' + (S.filter === x[0] ? " on" : "") + '" aria-pressed="' + (S.filter === x[0]) + '" data-act="filter" data-f="' + x[0] + '">' + esc(t(x[1])) + '</button>'; }).join("") + '</div>' +
       '<main><div id="results">' + results() + '</div></main>' + nav();
   }
 
-  var HELP = [
-    ["plus", "requestOffer", "h_offer_d"], ["search", "search", "h_search_d"], ["speaker", "ansage", "h_ansage_d"],
-    ["globe", "language", "h_lang_d"], ["camera", "photos", "h_photos_d"], ["cal", "s2Title", "h_appt_d"],
-    ["list", "nav_orders", "h_orders_d"], ["chat", "contactT", "h_contact_d"], ["help", "faq1_t", "faq1_d"], ["help", "faq2_t", "faq2_d"]
-  ];
   function scrHelp() {
     return bar(t("helpTitle"), "", "home") + '<main>' +
-      '<button class="btn" style="background:var(--blueBg);color:#BFDBFE" data-act="readall">' + ic("speaker", 18) + esc(t("readAll")) + '</button>' +
+      '<button class="btn soft2" data-act="readall">' + ic("speaker", 18) + esc(t("readAll")) + '</button>' +
       '<div class="list">' + HELP.map(function (h, i) {
-        return '<div class="item" style="align-items:flex-start"><span class="ib' + (i > 7 ? " a" : "") + '">' + ic(h[0], 20) + '</span><span class="tx"><span class="tt">' + esc(t(h[1])) + '</span><span class="ds">' + esc(t(h[2])) + '</span></span>' +
+        return '<div class="item" style="align-items:flex-start"><span class="ib' + (i > 9 ? " a" : "") + '">' + ic(h[0], 20) + '</span><span class="tx"><span class="tt">' + esc(t(h[1])) + '</span><span class="ds">' + esc(t(h[2])) + '</span></span>' +
           '<button class="say" data-act="say" data-a="' + h[1] + '" data-b="' + h[2] + '" aria-label="' + esc(t("listen")) + ': ' + esc(t(h[1])) + '">' + ic("speak1", 18) + '</button></div>';
       }).join("") + '</div>' +
       '<div class="row2"><button class="btn out" data-act="tips">' + esc(t("showTips")) + '</button><button class="btn out" data-act="voice">' + ic("mic", 18) + esc(t("ansage")) + '</button></div>' +
@@ -453,14 +558,15 @@
     return bar(t("ansage"), "", "home") + '<main style="gap:16px">' +
       (SR ? '' : '<div class="warnbox">' + esc(t("noMic")) + '</div>') +
       '<div class="micwrap' + (S.listening ? " live" : "") + '"><button class="bigmic' + (S.listening ? " live" : "") + '" data-act="listen" aria-label="' + esc(t("mic")) + '" aria-pressed="' + S.listening + '">' + ic("mic", 40) + '</button></div>' +
-      '<p class="status" aria-live="polite">' + esc(S.listening ? t("listening") : t("tapToSpeak")) + '</p>' +
+      '<p class="status" aria-live="polite">' + esc(S.listening ? t("listening") : t("voiceHint")) + '</p>' +
       '<div class="convo">' + S.convo.map(function (m) {
         return '<div class="bub ' + m.who + '"><span class="who">' + esc(m.who === "you" ? t("you") : t("wnSays")) + '</span>' + esc(m.text) + '</div>';
       }).join("") + '</div>' +
+      '<button class="example" data-act="utter" data-text="' + esc(t("ex_order")) + '"><small>' + esc(t("voiceOrder")) + ' · ' + esc(t("exampleLbl")) + '</small>„' + esc(t("ex_order")) + '“</button>' +
       '<div class="field"><span class="muted xs">' + esc(t("trySay")) + '</span><div class="chips">' +
       ex.map(function (k) { return '<button class="chip sm" data-act="utter" data-text="' + esc(t(k)) + '">' + esc(t(k)) + '</button>'; }).join("") + '</div></div>' +
       '<form id="sayform" class="searchbar"><input id="saytext" aria-label="' + esc(t("typeHere")) + '" placeholder="' + esc(t("typeHere")) + '"><button class="micbtn" aria-label="' + esc(t("send")) + '">' + ic("send", 18, "flip") + '</button></form>' +
-      '<label class="switch"><span class="tx"><b style="color:#fff;font-size:14px">' + esc(t("autoAnnounce")) + '</b><span class="muted xs">' + esc(t("autoAnnounceD")) + '</span></span>' +
+      '<label class="switch"><span class="tx"><b>' + esc(t("autoAnnounce")) + '</b><span class="muted xs">' + esc(t("autoAnnounceD")) + '</span></span>' +
       '<span class="tg"><input type="checkbox" data-field="auto"' + (S.settings.auto ? " checked" : "") + '><i></i></span></label>' +
       '<div class="field"><span class="lbl">' + esc(t("speed")) + '</span><div class="seg" role="radiogroup">' +
       [[0.8, "slow"], [1, "normal"], [1.25, "fast"]].map(function (r) { var on = S.settings.rate === r[0]; return '<button role="radio" aria-checked="' + on + '" class="' + (on ? "on" : "") + '" data-act="rate" data-r="' + r[0] + '">' + esc(t(r[1])) + '</button>'; }).join("") +
@@ -476,6 +582,36 @@
         return '<button class="' + (on ? "on" : "") + '" data-act="setlang" data-code="' + l.code + '" lang="' + l.code + '" dir="' + l.dir + '" aria-pressed="' + on + '">' + window.WN_FLAG(l.code, 30) + '<span>' + esc(l.name) + '</span>' + (on ? '<span class="ck">' + ic("check", 20) + '</span>' : '') + '</button>';
       }).join("") + '</div></div></div>';
   }
+  function designSheet() {
+    var th = S.settings.theme, contrast = th === "contrast";
+    var cards = Object.keys(THEMES).map(function (k) {
+      var pv = THEMES[k].pv, acc = k === "contrast" ? "#FFD400" : (ACCENTS[S.settings.accent] || ACCENTS[THEMES[k].accent]).a, on = th === k;
+      return '<button class="thm' + (on ? " on" : "") + '" data-act="theme" data-id="' + k + '" aria-pressed="' + on + '">' +
+        '<span class="pv" style="background:' + pv[0] + '"><i style="background:' + pv[2] + ';width:46%"></i><i style="background:' + pv[1] + ';border:1px solid rgba(127,127,127,.35);height:16px"></i><b style="background:' + acc + '"></b></span>' +
+        '<span class="nm">' + esc(t("theme_" + k)) + (on ? '<span style="color:var(--accentL)">' + ic("check", 18) + '</span>' : '') + '</span></button>';
+    }).join("");
+    var sw = '<button class="sw auto' + (S.settings.accent === "auto" ? " on" : "") + '" data-act="accent" data-id="auto" aria-pressed="' + (S.settings.accent === "auto") + '" aria-label="' + esc(t("c_auto")) + '"' + (contrast ? " disabled" : "") + '><i></i></button>' +
+      ACCENT_LIST.map(function (a) {
+        var on = S.settings.accent === a;
+        return '<button class="sw' + (on ? " on" : "") + '" data-act="accent" data-id="' + a + '" aria-pressed="' + on + '" aria-label="' + esc(t("c_" + a)) + '" title="' + esc(t("c_" + a)) + '"' + (contrast ? " disabled" : "") + '><i style="background:' + ACCENTS[a].a + '"></i></button>';
+      }).join("");
+    return '<div class="sheetbg" data-act="closesheet"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dt">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between"><h2 id="dt">' + esc(t("designTitle")) + '</h2>' +
+      '<button class="round" data-act="closesheet" aria-label="' + esc(t("close")) + '">' + ic("x", 18) + '</button></div>' +
+      '<h3>' + esc(t("design")) + '</h3><div class="themes">' + cards + '</div>' +
+      '<h3>' + esc(t("color")) + '</h3><div class="swatches">' + sw + '</div>' +
+      (contrast ? '<p class="muted xs" style="margin-top:10px">' + esc(t("contrastNote")) + '</p>' : '') +
+      '<button class="btn" data-act="closesheet" style="width:100%;margin-top:18px">' + ic("check", 18) + esc(t("done")) + '</button>' +
+      '</div></div>';
+  }
+  function lightbox() {
+    var i = S.lightbox, v = VEHICLE[i];
+    return '<div class="lightbox" role="dialog" aria-modal="true" aria-label="' + esc(t("vehicle")) + '">' +
+      '<img src="' + vimg(i) + '" alt="WN Entrümpelung – ' + esc(t(v[1])) + '"><span class="cap">' + esc(t(v[1])) + ' · ' + (i + 1) + '/' + VEHICLE.length + '</span>' +
+      '<div class="nav2"><button class="round" data-act="lbprev" aria-label="' + esc(t("prev")) + '">' + ic("back", 20, "flip") + '</button>' +
+      '<button class="round" data-act="lbclose" aria-label="' + esc(t("close")) + '">' + ic("x", 20) + '</button>' +
+      '<button class="round" data-act="lbnext" aria-label="' + esc(t("nextPic")) + '">' + ic("chev", 20, "flip") + '</button></div></div>';
+  }
 
   var SCREENS = { home: scrHome, request: scrRequest, orders: scrOrders, order: scrOrder, search: scrSearch, help: scrHelp, ansage: scrAnsage };
 
@@ -484,7 +620,9 @@
     document.documentElement.lang = l.code;
     document.documentElement.dir = l.dir;
     var html = '<div class="screen">' + (SCREENS[S.screen] || scrHome)() + '</div>';
-    if (S.sheet) html += langSheet();
+    if (S.sheet === "lang") html += langSheet();
+    if (S.sheet === "design") html += designSheet();
+    if (S.lightbox >= 0) html += lightbox();
     if (S.tip >= 0) html += '<div class="tipblock"></div><div class="tipring" id="tipring"></div><div class="tipcard" id="tipcard"></div>';
     html += '<div class="toast" id="toast" role="status" aria-live="polite"></div>';
     $app.innerHTML = html;
@@ -499,9 +637,9 @@
   }
 
   /* ---------- Tipps auf dem Bildschirm ---------- */
-  var TIPS = [["lang", "tip_lang"], ["read", "tip_read"], ["help", "tip_help"], ["search", "tip_search"], ["offer", "tip_offer"]];
-  function startTips() { S.tip = 0; if (S.screen !== "home") { S.screen = "home"; } render(); }
-  function endTips() { S.tip = -1; LS.set("tipsSeen", true); render(); }
+  var TIPS = [["lang", "tip_lang"], ["design", "tip_design"], ["read", "tip_read"], ["help", "tip_help"], ["mic", "tip_mic"], ["offer", "tip_offer"]];
+  function startTips() { S.tip = 0; S.sheet = false; S.screen = "home"; render(); }
+  function endTips() { S.tip = -1; LS.set("tipsSeen", 2); render(); }
   function drawTip() {
     var tip = TIPS[S.tip], el = document.querySelector('[data-tip="' + tip[0] + '"]');
     var ring = document.getElementById("tipring"), card = document.getElementById("tipcard");
@@ -528,7 +666,6 @@
     render();
     speak(t("langSay")); // Ansage sofort in der neuen Sprache
   }
-
   function addRecent(q) {
     q = String(q || "").trim(); if (q.length < 2) return;
     S.recent = [q].concat(S.recent.filter(function (r) { return r.toLowerCase() !== q.toLowerCase(); })).slice(0, 6);
@@ -539,36 +676,33 @@
   var ACT = {
     home: function () { go("home"); },
     orders: function () { go("orders"); },
-    langsheet: function () { S.sheet = true; render(); var b = document.querySelector(".langs button.on"); if (b) b.focus(); },
-    closesheet: function (el, e) { if (e.target.closest(".sheet") && !e.target.closest('[data-act="closesheet"].round')) return; S.sheet = false; render(); },
+    langsheet: function () { S.sheet = "lang"; render(); var b = document.querySelector(".langs button.on"); if (b) b.focus(); },
+    designsheet: function () { S.sheet = "design"; render(); var b = document.querySelector(".thm.on"); if (b) b.focus(); },
+    closesheet: function (el, e) {
+      if (e.target.closest(".sheet") && !e.target.closest('.sheet [data-act="closesheet"]')) return;
+      S.sheet = false; render();
+    },
     setlang: function (el) { setLang(el.getAttribute("data-code")); },
+    theme: function (el) { S.settings.theme = el.getAttribute("data-id"); saveSettings(); applyTheme(); render(); },
+    accent: function (el) { S.settings.accent = el.getAttribute("data-id"); saveSettings(); applyTheme(); render(); },
     read: function () { speak(readText()); },
     newreq: function () { startRequest(); },
     svcstart: function (el) { startRequest(el.getAttribute("data-id")); },
-    svc: function (el) {
-      var id = el.getAttribute("data-id"), a = S.draft.services, i = a.indexOf(id);
-      if (i >= 0) a.splice(i, 1); else a.push(id); saveDraft(); render();
-    },
+    svc: function (el) { var id = el.getAttribute("data-id"), a = S.draft.services, i = a.indexOf(id); if (i >= 0) a.splice(i, 1); else a.push(id); saveDraft(); render(); },
     obj: function (el) { S.draft.obj = el.getAttribute("data-id"); saveDraft(); render(); },
     floor: function (el) { S.draft.floor = Math.max(0, Math.min(30, (S.draft.floor || 0) + Number(el.getAttribute("data-d")))); saveDraft(); render(); },
     mode: function (el) { S.draft.mode = el.getAttribute("data-id"); saveDraft(); render(); },
     day: function (el) { S.draft.date = el.getAttribute("data-d"); saveDraft(); render(); },
     time: function (el) { S.draft.time = el.getAttribute("data-t"); saveDraft(); render(); },
-    rmphoto: function (el) { var i = Number(el.getAttribute("data-i")); var p = S.photos.splice(i, 1)[0]; if (p) try { URL.revokeObjectURL(p.url); } catch (e) {} render(); },
+    rmphoto: function (el) { var p = S.photos.splice(Number(el.getAttribute("data-i")), 1)[0]; if (p) try { URL.revokeObjectURL(p.url); } catch (e) {} render(); },
     next: function () {
       var d = S.draft;
       if (S.step === 1 && !d.services.length) return toast(t("errService"));
       if (S.step === 2 && !(d.date && d.time)) return toast(t("errDate"));
-      if (S.step === 3) {
-        if (!(d.name.trim() && d.phone.trim() && d.address.trim())) return toast(t("errContact"));
-        return sendRequest();
-      }
+      if (S.step === 3) { if (!(d.name.trim() && d.phone.trim() && d.address.trim())) return toast(t("errContact")); return sendRequest(); }
       S.step++; go("request", { force: true });
     },
-    back: function () {
-      if (S.screen === "request" && S.step > 1) { S.step--; go("request", { force: true }); }
-      else go("home");
-    },
+    back: function () { if (S.screen === "request" && S.step > 1) { S.step--; go("request", { force: true }); } else go("home"); },
     call: function () { call(); },
     wa: function () { whatsapp(""); },
     openorder: function (el) { S.orderId = Number(el.getAttribute("data-id")); go("order", { force: true }); },
@@ -585,7 +719,11 @@
     utter: function (el) { handleUtterance(el.getAttribute("data-text")); },
     say: function (el) { speak(t(el.getAttribute("data-a")) + ". " + t(el.getAttribute("data-b"))); },
     readall: function () { speak(HELP.map(function (h) { return t(h[1]) + ". " + t(h[2]); }).join(" ")); },
-    rate: function (el) { S.settings.rate = Number(el.getAttribute("data-r")); LS.set("settings", S.settings); render(); speak(t("say_ansage")); },
+    rate: function (el) { S.settings.rate = Number(el.getAttribute("data-r")); saveSettings(); render(); speak(t("say_ansage")); },
+    photo: function (el) { S.lightbox = Number(el.getAttribute("data-i")); render(); },
+    lbclose: function () { S.lightbox = -1; render(); },
+    lbprev: function () { S.lightbox = (S.lightbox + VEHICLE.length - 1) % VEHICLE.length; render(); },
+    lbnext: function () { S.lightbox = (S.lightbox + 1) % VEHICLE.length; render(); },
     tips: function () { startTips(); },
     tipnext: function () { if (S.tip >= TIPS.length - 1) endTips(); else { S.tip++; drawTip(); } },
     tipskip: function () { endTips(); }
@@ -601,12 +739,11 @@
     var a = ACT[el.getAttribute("data-act")];
     if (a) { e.preventDefault(); a(el, e); }
   });
-
   function onField(e) {
     var el = e.target, f = el.getAttribute && el.getAttribute("data-field");
     if (el.id === "q") { S.query = el.value; var r = document.getElementById("results"); if (r) r.innerHTML = results(); return; }
     if (!f) return;
-    if (f === "auto") { S.settings.auto = el.checked; LS.set("settings", S.settings); if (el.checked) speak(t("autoAnnounce")); return; }
+    if (f === "auto") { S.settings.auto = el.checked; saveSettings(); if (el.checked) speak(t("autoAnnounce")); return; }
     if (f === "elevator") S.draft.elevator = el.checked; else S.draft[f] = el.value;
     saveDraft();
   }
@@ -624,11 +761,13 @@
     if (e.target.id === "sayform") { var i = document.getElementById("saytext"); if (i && i.value.trim()) handleUtterance(i.value); }
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { if (S.sheet) { S.sheet = false; render(); } else if (S.tip >= 0) endTips(); }
+    if (e.key !== "Escape") return;
+    if (S.lightbox >= 0) { S.lightbox = -1; render(); } else if (S.sheet) { S.sheet = false; render(); } else if (S.tip >= 0) endTips();
   });
 
   /* ---------- Start ---------- */
+  applyTheme();
   try { history.replaceState({ s: "home" }, ""); } catch (e) {}
   render();
-  if (!LS.get("tipsSeen", false)) setTimeout(startTips, 600);
+  if (LS.get("tipsSeen", 0) !== 2) setTimeout(startTips, 600);
 })();

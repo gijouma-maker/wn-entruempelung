@@ -11,7 +11,7 @@ Wird die Sprache gewechselt, wechselt auch die Ansage (Vorlesen und Spracheingab
 2. Name: `wn-entruempelung` → **Public** → **Create repository**.
    (Ein **neues** Repository – nicht in `joumhome-test` hochladen.)
 3. Auf **uploading an existing file** klicken und **alle Dateien aus diesem Ordner** hineinziehen
-   (`index.html`, `app.js`, `i18n.js`, `flags.js`, `config.js`, `logo-mark.svg`, `README.md`, `.nojekyll`) → **Commit changes**.
+   (alle Dateien und den Ordner `bilder`) → **Commit changes**.
 4. **Settings → Pages** → Source: **Deploy from a branch** → Branch **main**, Ordner **/ (root)** → **Save**.
 5. Nach 1–2 Minuten ist die App erreichbar unter:
    `https://gijouma-maker.github.io/wn-entruempelung/`
