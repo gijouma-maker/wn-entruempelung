@@ -23,6 +23,16 @@ JoumHome bleibt unverändert unter `https://gijouma-maker.github.io/joumhome-tes
 - Die WN-App speichert im Browser nur unter Namen, die mit `wn_` beginnen. JoumHome benutzt `hv_`. Es wird nichts von JoumHome gelesen, überschrieben oder gelöscht.
 - Kein Service-Worker, kein Cache, der andere Seiten auf derselben Adresse beeinflussen könnte.
 
+## Neu in dieser Version
+- **Zustimmung zur Datenübernahme** (Schritt 3, in allen 8 Sprachen): Stimmt der Kunde zu, kann der Chef die WhatsApp-Anfrage im Team-Bereich mit „Aus Kunden-Anfrage“ einfügen, und das Ticket wird automatisch ausgefüllt. Beim nächsten Mal sind Name, Telefon und Adresse auf dem Handy des Kunden schon eingetragen.
+- **Team-Bereich**: Unter „Hilfe“ und unten auf der Startseite gibt es einen Link zum Team-Bereich (Aufträge, Arbeitszeit, Urlaub, Verträge). Öffnen können ihn nur Personen, die der Chef in Claude eingeladen hat. Der Link steht in `config.js` bei `teamApp`.
+
+## Neue Version hochladen
+1. ZIP entpacken.
+2. https://github.com/gijouma-maker/wn-entruempelung/upload/main öffnen.
+3. Alle Dateien und den Ordner `bilder` hineinziehen (nicht die ZIP-Datei). Gleichnamige Dateien werden ersetzt.
+4. Unten auf **Commit changes** klicken, 1–2 Minuten warten, App neu laden.
+
 ## Einstellungen
 
 In `config.js` die eigene Telefon- und WhatsApp-Nummer eintragen (auf GitHub: Datei öffnen → Stift-Symbol → ändern → **Commit changes**).

@@ -10,5 +10,9 @@ window.WN_CONFIG = {
   whatsapp: "",
 
   // Optional: E-Mail-Adresse. Wird nur benutzt, wenn KEINE Telefon-/WhatsApp-Nummer eingetragen ist.
-  email: ""
+  email: "",
+
+  // Link zum Team-Bereich (Aufträge, Arbeitszeit, Urlaub, Verträge) für Chef und Mitarbeiter.
+  // Nur Personen, die Sie in Claude eingeladen haben, können ihn öffnen. Leer lassen = kein Knopf.
+  teamApp: "https://claude.ai/artifact/UAJRavigwn6eVYrqJ6oktT"
 };

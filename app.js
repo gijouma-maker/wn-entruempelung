@@ -14,7 +14,7 @@
     set: function (k, v) { try { localStorage.setItem("wn_" + k, JSON.stringify(v)); } catch (e) {} }
   };
   function guessLang() { var n = String(navigator.language || "de").slice(0, 2).toLowerCase(); return IDX[n] != null ? n : "de"; }
-  function newDraft() { return { services: [], obj: "flat", area: "", floor: 0, elevator: false, mode: "onsite", date: "", time: "", name: "", phone: "", address: "", note: "" }; }
+  function newDraft() { var c = LS.get("contact", null) || {}; return { services: [], obj: "flat", area: "", floor: 0, elevator: false, mode: "onsite", date: "", time: "", name: c.name || "", phone: c.phone || "", address: c.address || "", note: "", consent: !!c.name }; }
 
   var S = {
     lang: LS.get("lang", null) || guessLang(),
@@ -319,20 +319,29 @@
     var d = o.d, sv = d.services.map(function (s) { return de("svc_" + s); }).join(", ");
     var dd = new Date(d.date + "T12:00:00");
     var dateDe = isNaN(dd) ? d.date : dd.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+    var LEIST = { household: "Haushaltsauflösung", office: "Büroauflösung", disposal: "Entsorgung", cleaning: "Reinigung", transport: "Transport", basement: "Keller/Dachboden" };
+    var dd2 = isNaN(dd) ? "-" : String(dd.getDate()).padStart(2, "0") + "." + String(dd.getMonth() + 1).padStart(2, "0") + "." + dd.getFullYear();
+    var now = new Date(), stamp = now.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    /* Aufbau passt zum Team-Bereich: dort wird die Nachricht mit "Aus Kunden-Anfrage" automatisch als Ticket übernommen */
     return [
-      "Neue Anfrage über die WN-App (Nr. " + o.no + ")",
-      "Leistungen: " + sv,
-      "Objekt: " + de("obj_" + d.obj) + (d.area ? ", ca. " + d.area + " m²" : "") + ", Etage: " + (d.floor ? d.floor : "EG") + ", Aufzug: " + (d.elevator ? "ja" : "nein"),
-      "Besichtigung: " + (d.mode === "video" ? "per Video" : "vor Ort") + ", " + dateDe + " um " + d.time + " Uhr",
+      "[WN-Anfrage] Neue Anfrage über die WN-App (Nr. " + o.no + ")",
       "Name: " + d.name, "Telefon: " + d.phone, "Adresse: " + d.address,
-      d.note ? "Nachricht: " + d.note : "",
+      "Leistung: " + (LEIST[d.services[0]] || "Entrümpelung"),
+      "Leistungen: " + sv,
+      "Objekt: " + de("obj_" + d.obj) + (d.area ? ", ca. " + d.area + " m²" : ""),
+      "Etage/Aufzug: " + (d.floor ? d.floor + ". OG" : "EG") + ", " + (d.elevator ? "mit Aufzug" : "kein Aufzug"),
+      "Besichtigung: " + (d.mode === "video" ? "per Video" : "vor Ort") + " (" + dateDe + ")",
+      "Wunschtermin: " + dd2, "Uhrzeit: " + (d.time || "-"),
       o.photos ? "Fotos: " + o.photos + " (bitte im Chat nachsenden)" : "",
-      "Sprache des Kunden: " + L().name
-    ].filter(Boolean).join("\n");
+      "Sprache: " + L().name,
+      "", d.note || "-", "",
+      "Einwilligung: " + (d.consent ? "ja, Daten automatisch übernehmen (" + stamp + ")" : "nein")
+    ].filter(function (x, i) { return x !== "" || i > 12; }).join("\n");
   }
   function sendRequest() {
     var o = { id: Date.now(), no: String(Date.now()).slice(-5), created: new Date().toISOString(), d: JSON.parse(JSON.stringify(S.draft)), photos: S.photos.length, status: 0, lang: S.lang };
     S.orders.unshift(o); LS.set("orders", S.orders);
+    if (S.draft.consent) LS.set("contact", { name: S.draft.name, phone: S.draft.phone, address: S.draft.address }); else try { localStorage.removeItem("wn_contact"); } catch (e) {}
     var msg = summaryDE(o);
     if (C.whatsapp || C.phone) whatsapp(msg);
     else if (C.email) location.href = "mailto:" + C.email + "?subject=" + encodeURIComponent("Anfrage Nr. " + o.no) + "&body=" + encodeURIComponent(msg);
@@ -394,6 +403,7 @@
         '<span class="ib">' + ic("list", 20) + '</span><span style="flex:1;display:flex;flex-direction:column;gap:3px"><span class="muted xs">' + esc(t("lastRequest")) + '</span>' +
         '<b>' + esc(t("orderNo", { n: last.no })) + ' · ' + esc(t("st" + last.status)) + '</b></span>' + ic("chev", 20, "flip") + '</button>' : '') +
       '<p class="note">' + esc(t("testNote")) + '</p>' +
+      (C.teamApp ? '<p class="note"><a href="' + esc(C.teamApp) + '" target="_blank" rel="noopener">' + esc(t("teamArea")) + '</a></p>' : '') +
       '</main>' + nav();
   }
 
@@ -447,7 +457,8 @@
         '<div class="field"><label class="lbl" for="f-phone">' + esc(t("phone")) + ' *</label><input class="inp" id="f-phone" data-field="phone" type="tel" autocomplete="tel" dir="ltr" value="' + esc(d.phone) + '"></div>' +
         '<div class="field"><label class="lbl" for="f-addr">' + esc(t("address")) + ' *</label><input class="inp" id="f-addr" data-field="address" autocomplete="street-address" value="' + esc(d.address) + '"></div>' +
         '<div class="field"><label class="lbl" for="f-note">' + esc(t("note")) + '</label><textarea class="inp" id="f-note" data-field="note" placeholder="' + esc(t("notePh")) + '">' + esc(d.note) + '</textarea></div>' +
-        '<p class="note">' + esc(t("testNote")) + '</p>';
+        '<label class="switch" style="align-items:flex-start;padding:14px 16px"><span class="tx"><b style="font-weight:600;line-height:1.45">' + esc(t("consent")) + '</b><span class="muted xs">' + esc(t("consentHint")) + '</span></span>' +
+        '<span class="tg"><input type="checkbox" data-field="consent"' + (d.consent ? " checked" : "") + '><i></i></span></label>';
       foot = '<div class="foot"><button class="btn" data-act="next">' + ic("send", 18, "flip") + esc(t("send")) + '</button></div>';
     }
     return head + '<main>' + body + '</main>' + foot;
@@ -550,6 +561,7 @@
       }).join("") + '</div>' +
       '<div class="row2"><button class="btn out" data-act="tips">' + esc(t("showTips")) + '</button><button class="btn out" data-act="voice">' + ic("mic", 18) + esc(t("ansage")) + '</button></div>' +
       '<button class="btn" data-act="call">' + ic("phone", 18) + esc(t("call")) + '</button>' +
+      (C.teamApp ? '<section class="card" style="gap:10px"><h2 class="h2">' + esc(t("teamArea")) + '</h2><p class="soft sm">' + esc(t("teamAreaD")) + '</p><a class="btn out" href="' + esc(C.teamApp) + '" target="_blank" rel="noopener">' + ic("list", 18) + esc(t("teamArea")) + '</a></section>' : '') +
       '</main>' + nav();
   }
 
@@ -744,7 +756,7 @@
     if (el.id === "q") { S.query = el.value; var r = document.getElementById("results"); if (r) r.innerHTML = results(); return; }
     if (!f) return;
     if (f === "auto") { S.settings.auto = el.checked; saveSettings(); if (el.checked) speak(t("autoAnnounce")); return; }
-    if (f === "elevator") S.draft.elevator = el.checked; else S.draft[f] = el.value;
+    if (f === "elevator" || f === "consent") S.draft[f] = el.checked; else S.draft[f] = el.value;
     saveDraft();
   }
   document.addEventListener("input", function (e) { if (e.target.type !== "checkbox") onField(e); });
