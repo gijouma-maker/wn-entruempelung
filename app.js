@@ -68,6 +68,12 @@
     check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>',
     trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
     send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
+    team: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15 14.5c3 0 6 1.8 6 5"/>',
+    boss: '<path d="M3 7h18v13H3z"/><path d="M8 7V4h8v3M3 12h18"/>',
+    qr: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    dl: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
     palette: '<path d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A5.6 5.6 0 0 0 22 9.8C22 5.5 17.5 2 12 2z"/><circle cx="7.5" cy="11.5" r="1.3"/><circle cx="10.5" cy="7" r="1.3"/><circle cx="15.5" cy="7.5" r="1.3"/>'
   };
   function ic(n, s, cls) { s = s || 22; return '<svg class="ic ' + (cls || "") + '" width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + P[n] + '</svg>'; }
@@ -382,7 +388,7 @@
 
   function scrHome() {
     var last = S.orders[0];
-    return header() + '<main>' +
+    return header() + '<main>' + roleBar() +
       '<div class="searchbar" role="search" data-tip="search">' +
       '<button class="fake" data-go="search">' + ic("search", 20) + '<span>' + esc(t("searchPh")) + '</span></button>' +
       '<button class="micbtn" data-act="voice" data-tip="mic" aria-label="' + esc(t("voiceOrder")) + '">' + ic("mic", 20) + '</button></div>' +
@@ -402,9 +408,32 @@
       (last ? '<button class="card lastcard" data-act="openorder" data-id="' + last.id + '">' +
         '<span class="ib">' + ic("list", 20) + '</span><span style="flex:1;display:flex;flex-direction:column;gap:3px"><span class="muted xs">' + esc(t("lastRequest")) + '</span>' +
         '<b>' + esc(t("orderNo", { n: last.no })) + ' · ' + esc(t("st" + last.status)) + '</b></span>' + ic("chev", 20, "flip") + '</button>' : '') +
+      '<section class="card" style="flex-direction:row;align-items:center;gap:14px"><img src="qr-code.svg" alt="' + esc(t("qrTitle")) + '" width="112" height="112" style="border-radius:10px;background:#fff;flex:none">' +
+      '<div style="display:flex;flex-direction:column;gap:8px;min-width:0"><h2 class="h2">' + esc(t("qrTitle")) + '</h2><p class="soft xs">' + esc(t("qrText")) + '</p>' +
+      '<button class="btn out" data-act="copylink" style="min-height:40px">' + ic("copy", 16) + esc(t("copyLink")) + '</button>' +
+      '<a class="btn out" href="qr-code.png" download="WN-Entruempelung-QR-Code.png" style="min-height:40px">' + ic("dl", 16) + esc(t("qrDownload")) + '</a></div></section>' +
       '<p class="note">' + esc(t("testNote")) + '</p>' +
       (C.teamApp ? '<p class="note"><a href="' + esc(C.teamApp) + '" target="_blank" rel="noopener">' + esc(t("teamArea")) + '</a></p>' : '') +
       '</main>' + nav();
+  }
+
+  function roleBar() {
+    return '<div class="seg" role="group" aria-label="' + esc(t("viewAs")) + '">' +
+      [["kunde", "user"], ["ma", "team"], ["chef", "boss"]].map(function (r) {
+        var on = r[0] === "kunde";
+        return '<button class="' + (on ? "on" : "") + '" aria-pressed="' + on + '" data-act="role" data-id="' + r[0] + '" style="display:flex;align-items:center;justify-content:center;gap:6px">' + ic(r[1], 17) + esc(t("role_" + r[0])) + '</button>';
+      }).join("") + '</div>';
+  }
+  function roleSheet() {
+    var r = S.sheet === "role_chef" ? "chef" : "ma";
+    return '<div class="sheetbg" data-act="closesheet"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rt">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between"><h2 id="rt">' + esc(t("role_" + r)) + '</h2>' +
+      '<button class="round" data-act="closesheet" aria-label="' + esc(t("close")) + '">' + ic("x", 18) + '</button></div>' +
+      '<p class="soft" style="margin:14px 0 6px">' + esc(t("role_" + r + "D")) + '</p>' +
+      '<p class="muted xs" style="margin:0 0 16px">' + esc(t("loginNote")) + '</p>' +
+      (C.teamApp ? '<a class="btn" href="' + esc(C.teamApp) + '" target="_blank" rel="noopener">' + ic(r === "chef" ? "boss" : "team", 20) + esc(t("openTeam")) + '</a>' : '<p class="warnbox">' + esc(t("noPhone")) + '</p>') +
+      '<button class="btn out" data-act="closesheet" style="width:100%;margin-top:10px">' + ic("user", 18) + esc(t("role_kunde")) + '</button>' +
+      '</div></div>';
   }
 
   function scrRequest() {
@@ -634,6 +663,7 @@
     var html = '<div class="screen">' + (SCREENS[S.screen] || scrHome)() + '</div>';
     if (S.sheet === "lang") html += langSheet();
     if (S.sheet === "design") html += designSheet();
+    if (S.sheet === "role_ma" || S.sheet === "role_chef") html += roleSheet();
     if (S.lightbox >= 0) html += lightbox();
     if (S.tip >= 0) html += '<div class="tipblock"></div><div class="tipring" id="tipring"></div><div class="tipcard" id="tipcard"></div>';
     html += '<div class="toast" id="toast" role="status" aria-live="polite"></div>';
@@ -737,6 +767,11 @@
     lbprev: function () { S.lightbox = (S.lightbox + VEHICLE.length - 1) % VEHICLE.length; render(); },
     lbnext: function () { S.lightbox = (S.lightbox + 1) % VEHICLE.length; render(); },
     tips: function () { startTips(); },
+    role: function (el) { var r = el.getAttribute("data-id"); if (r === "kunde") return; S.sheet = "role_" + r; render(); },
+    copylink: function () {
+      var url = "https://gijouma-maker.github.io/wn-entruempelung/";
+      try { navigator.clipboard.writeText(url).then(function () { toast(t("linkCopied")); }, function () { toast(url); }); } catch (e) { toast(url); }
+    },
     tipnext: function () { if (S.tip >= TIPS.length - 1) endTips(); else { S.tip++; drawTip(); } },
     tipskip: function () { endTips(); }
   };

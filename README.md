@@ -27,6 +27,9 @@ JoumHome bleibt unverändert unter `https://gijouma-maker.github.io/joumhome-tes
 - **Zustimmung zur Datenübernahme** (Schritt 3, in allen 8 Sprachen): Stimmt der Kunde zu, kann der Chef die WhatsApp-Anfrage im Team-Bereich mit „Aus Kunden-Anfrage“ einfügen, und das Ticket wird automatisch ausgefüllt. Beim nächsten Mal sind Name, Telefon und Adresse auf dem Handy des Kunden schon eingetragen.
 - **Team-Bereich**: Unter „Hilfe“ und unten auf der Startseite gibt es einen Link zum Team-Bereich (Aufträge, Arbeitszeit, Urlaub, Verträge). Öffnen können ihn nur Personen, die der Chef in Claude eingeladen hat. Der Link steht in `config.js` bei `teamApp`.
 
+- **Ansicht wählen**: Oben auf der Startseite „Kunde | Mitarbeiter | Chef“. Mitarbeiter und Chef kommen von dort in den Team-Bereich (an-/abmelden, Pause, Urlaub, krank melden, „Heute im Team“, Tickets, Verträge).
+- **QR-Code**: Auf der Startseite mit „Link kopieren“ und „QR herunterladen“. Die Dateien `qr-code.png` und `qr-code.svg` sind zum Drucken (Flyer, Visitenkarte, Auto).
+
 ## Neue Version hochladen
 1. ZIP entpacken.
 2. https://github.com/gijouma-maker/wn-entruempelung/upload/main öffnen.
