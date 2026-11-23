@@ -23,7 +23,32 @@ JoumHome bleibt unverändert unter `https://gijouma-maker.github.io/joumhome-tes
 - Die WN-App speichert im Browser nur unter Namen, die mit `wn_` beginnen. JoumHome benutzt `hv_`. Es wird nichts von JoumHome gelesen, überschrieben oder gelöscht.
 - Kein Service-Worker, kein Cache, der andere Seiten auf derselben Adresse beeinflussen könnte.
 
-## Neu in dieser Version
+## Adressen zum Testen
+- Kunden-App: `https://gijouma-maker.github.io/wn-entruempelung/`
+- Team-Bereich (Testversion ohne KI, Daten nur im Browser): `https://gijouma-maker.github.io/wn-entruempelung/team/`
+  - Mitarbeiter-Ansicht: `…/team/?rolle=mitarbeiter`
+- Team-Bereich **mit KI und gemeinsamer Datenbank**: der Claude-Link aus `config.js` (`teamApp`)
+
+## Neu (23.11.2026)
+**Team-Bereich**
+- **KI-Volumen aus Fotos**: m³, Personen, Dauer, Sondermüll, verwertbare Gegenstände. Lernt aus der Nachkalkulation, wenn die KI meist zu hoch oder zu niedrig liegt.
+- **Kalkulation** mit Arbeit, Fahrt, Entsorgung, Material und Wertanrechnung; Preise unter Team & Firma → Preise.
+- **Festpreis oder Kostenvoranschlag** mit passendem Hinweistext im PDF. **Nachtrag** (Mehrkosten) nur mit Zustimmung des Kunden – per Unterschrift oder WhatsApp. Warnung vor der Rechnung, wenn mehr berechnet wird als im Angebot ohne Zustimmung.
+- **Angebot, Rechnung, Zahlungserinnerung/Mahnungen, Vollmacht, Auftrags- und Übergabeprotokoll, Steuerberater-Übersicht** als PDF – **Logo mittig oben**, Firmendaten automatisch in der **Fußzeile** (nur ausgefüllte Felder).
+- **§ 35a**: Arbeits- und Fahrtkosten auf Rechnung getrennt ausgewiesen.
+- **Belege**: KI liest jede Position einzeln, trennt Privates (Zigaretten, Kaugummi, Snacks …) und unterschiedliche MwSt-Sätze. CSV mit Konto-Vorschlag (SKR03) für den Steuerberater.
+- **Mahnwesen**: offene und überfällige Rechnungen unter Finanzen, drei Stufen.
+- **Vollmacht** für Erben, Betreuer und Bevollmächtigte mit Unterschrift.
+- **Nachkalkulation**: Hat sich der Auftrag gelohnt?
+- **Mitarbeiter**: „Erledigt“ nur mit Nachher-Foto, „Problem melden“.
+- **Sprachassistent mit KI** (nur Claude-Version).
+
+**Kunden-App**
+- **Füllgrad** (wenig, normal, sehr voll, extrem voll) und grobe m³-Schätzung mit Anzahl der Transporter-Ladungen. Wird in der WhatsApp-Anfrage mitgeschickt. Ladevolumen in `config.js` → `transporterM3`.
+
+Hinweis: Rechtliche Texte (Vollmacht, Festpreis/Kostenvoranschlag, Mahnungen) sind Vorlagen und ersetzen keine Rechtsberatung. Kontenvorschläge bitte vom Steuerberater prüfen lassen.
+
+## Frühere Neuerungen
 - **Zustimmung zur Datenübernahme** (Schritt 3, in allen 8 Sprachen): Stimmt der Kunde zu, kann der Chef die WhatsApp-Anfrage im Team-Bereich mit „Aus Kunden-Anfrage“ einfügen, und das Ticket wird automatisch ausgefüllt. Beim nächsten Mal sind Name, Telefon und Adresse auf dem Handy des Kunden schon eingetragen.
 - **Team-Bereich**: Unter „Hilfe“ und unten auf der Startseite gibt es einen Link zum Team-Bereich (Aufträge, Arbeitszeit, Urlaub, Verträge). Öffnen können ihn nur Personen, die der Chef in Claude eingeladen hat. Der Link steht in `config.js` bei `teamApp`.
 

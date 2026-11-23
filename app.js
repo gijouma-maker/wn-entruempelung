@@ -14,7 +14,7 @@
     set: function (k, v) { try { localStorage.setItem("wn_" + k, JSON.stringify(v)); } catch (e) {} }
   };
   function guessLang() { var n = String(navigator.language || "de").slice(0, 2).toLowerCase(); return IDX[n] != null ? n : "de"; }
-  function newDraft() { var c = LS.get("contact", null) || {}; return { services: [], obj: "flat", area: "", floor: 0, elevator: false, mode: "onsite", date: "", time: "", name: c.name || "", phone: c.phone || "", address: c.address || "", note: "", consent: !!c.name }; }
+  function newDraft() { var c = LS.get("contact", null) || {}; return { services: [], obj: "flat", area: "", floor: 0, elevator: false, fill: "normal", mode: "onsite", date: "", time: "", name: c.name || "", phone: c.phone || "", address: c.address || "", note: "", consent: !!c.name }; }
 
   var S = {
     lang: LS.get("lang", null) || guessLang(),
@@ -84,6 +84,19 @@
   ];
   var OBJECTS = ["flat", "house", "cellar", "office"];
   var TIMES = ["08:00", "10:00", "12:00", "14:00", "16:00"];
+  /* Volumen-Schätzung: m³ je m² Wohnfläche nach Füllgrad (Erfahrungswerte, unverbindlich) */
+  var FILL = { wenig: 0.25, normal: 0.5, voll: 0.8, messie: 1.2 };
+  function estimate(d) {
+    var a = parseFloat(String(d.area || "").replace(",", ".")), f = FILL[d.fill || "normal"] || 0.5;
+    if (!a || a <= 0) return null;
+    var m = a * f, lo = Math.max(1, Math.round(m * 0.8)), hi = Math.max(lo + 1, Math.round(m * 1.2)), cap = (window.WN_CONFIG && Number(window.WN_CONFIG.transporterM3)) || 12;
+    return { lo: lo, hi: hi, n: Math.max(1, Math.ceil(hi / cap)) };
+  }
+  function estBox(d) {
+    var e = estimate(d);
+    if (!e) return '<div class="muted xs">' + esc(t("estNeedArea")) + '</div>';
+    return '<b>' + esc(t("estText", { a: e.lo, b: e.hi, n: e.n })) + '</b><span class="muted xs" style="display:block;margin-top:4px">' + esc(t("estNote")) + '</span>';
+  }
   var VEHICLE = [["links", "v_left"], ["rechts", "v_right"], ["vorne", "v_front"], ["hinten", "v_back"]];
   function vimg(i) { return "bilder/fahrzeug-" + VEHICLE[i][0] + ".jpg"; }
 
@@ -335,6 +348,7 @@
       "Leistung: " + (LEIST[d.services[0]] || "Entrümpelung"),
       "Leistungen: " + sv,
       "Objekt: " + de("obj_" + d.obj) + (d.area ? ", ca. " + d.area + " m²" : ""),
+      (function () { var e = estimate(d); return e ? "Volumen: ca. " + e.lo + "–" + e.hi + " m³ (Füllgrad " + de("fill_" + (d.fill || "normal")) + ", Schätzung Kunde)" : ""; })(),
       "Etage/Aufzug: " + (d.floor ? d.floor + ". OG" : "EG") + ", " + (d.elevator ? "mit Aufzug" : "kein Aufzug"),
       "Besichtigung: " + (d.mode === "video" ? "per Video" : "vor Ort") + " (" + dateDe + ")",
       "Wunschtermin: " + dd2, "Uhrzeit: " + (d.time || "-"),
@@ -342,7 +356,7 @@
       "Sprache: " + L().name,
       "", d.note || "-", "",
       "Einwilligung: " + (d.consent ? "ja, Daten automatisch übernehmen (" + stamp + ")" : "nein")
-    ].filter(function (x, i) { return x !== "" || i > 12; }).join("\n");
+    ].filter(function (x, i) { return x !== "" || i > 13; }).join("\n");
   }
   function sendRequest() {
     var o = { id: Date.now(), no: String(Date.now()).slice(-5), created: new Date().toISOString(), d: JSON.parse(JSON.stringify(S.draft)), photos: S.photos.length, status: 0, lang: S.lang };
@@ -454,6 +468,10 @@
         '<button data-act="floor" data-d="1" aria-label="' + esc(t("more")) + '">+</button></div></div></div>' +
         '<label class="switch"><span class="tx"><b>' + esc(t("elevator")) + '</b><span class="muted xs">' + esc(t("elevatorHint")) + '</span></span>' +
         '<span class="tg"><input type="checkbox" data-field="elevator"' + (d.elevator ? " checked" : "") + '><i></i></span></label>' +
+        '<fieldset><legend>' + esc(t("fill")) + '</legend><div class="seg" role="radiogroup">' +
+        ["wenig", "normal", "voll", "messie"].map(function (f) { var on = (d.fill || "normal") === f; return '<button role="radio" aria-checked="' + on + '" class="' + (on ? "on" : "") + '" data-act="fill" data-id="' + f + '">' + esc(t("fill_" + f)) + '</button>'; }).join("") +
+        '</div></fieldset>' +
+        '<div class="field" style="background:var(--s1,rgba(127,127,127,.08));border-radius:14px;padding:12px 14px"><span class="lbl">' + esc(t("estTitle")) + '</span><div id="est">' + estBox(d) + '</div></div>' +
         '<div class="field"><span class="lbl">' + esc(t("photos")) + ' <span class="muted" style="font-weight:500">(' + esc(t("photosHint")) + ')</span></span><div class="photos">' +
         '<label class="addph">' + ic("camera", 26) + esc(t("addPhoto")) + '<input type="file" id="photoIn" accept="image/*" multiple class="sr"></label>' +
         S.photos.map(function (p, i) { return '<div class="ph"><img src="' + p.url + '" alt=""><button data-act="rmphoto" data-i="' + i + '" aria-label="' + esc(t("removePhoto")) + '">' + ic("x", 16) + '</button></div>'; }).join("") +
@@ -514,6 +532,7 @@
       [t("services"), d.services.map(function (s) { return plain(t("svc_" + s)); }).join(", ")],
       [t("object"), t("obj_" + d.obj) + (d.area ? " · " + d.area + " m²" : "")],
       [t("floor"), (d.floor ? d.floor : t("ground")) + " · " + (d.elevator ? t("elevator") : t("noLift"))],
+      estimate(d) ? [t("estTitle"), t("estText", { a: estimate(d).lo, b: estimate(d).hi, n: estimate(d).n })] : null,
       [t("st1"), t(d.mode === "video" ? "video" : "onsite") + " · " + fmtDate(d.date, true) + " · " + d.time],
       [t("name"), d.name], [t("phone"), d.phone], [t("address"), d.address],
       d.note ? [t("note"), d.note] : null,
@@ -732,6 +751,7 @@
     svcstart: function (el) { startRequest(el.getAttribute("data-id")); },
     svc: function (el) { var id = el.getAttribute("data-id"), a = S.draft.services, i = a.indexOf(id); if (i >= 0) a.splice(i, 1); else a.push(id); saveDraft(); render(); },
     obj: function (el) { S.draft.obj = el.getAttribute("data-id"); saveDraft(); render(); },
+    fill: function (el) { S.draft.fill = el.getAttribute("data-id"); saveDraft(); render(); },
     floor: function (el) { S.draft.floor = Math.max(0, Math.min(30, (S.draft.floor || 0) + Number(el.getAttribute("data-d")))); saveDraft(); render(); },
     mode: function (el) { S.draft.mode = el.getAttribute("data-id"); saveDraft(); render(); },
     day: function (el) { S.draft.date = el.getAttribute("data-d"); saveDraft(); render(); },
@@ -792,6 +812,7 @@
     if (!f) return;
     if (f === "auto") { S.settings.auto = el.checked; saveSettings(); if (el.checked) speak(t("autoAnnounce")); return; }
     if (f === "elevator" || f === "consent") S.draft[f] = el.checked; else S.draft[f] = el.value;
+    if (f === "area") { var eb = document.getElementById("est"); if (eb) eb.innerHTML = estBox(S.draft); }
     saveDraft();
   }
   document.addEventListener("input", function (e) { if (e.target.type !== "checkbox") onField(e); });

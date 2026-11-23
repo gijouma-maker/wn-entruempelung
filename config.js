@@ -14,5 +14,8 @@ window.WN_CONFIG = {
 
   // Link zum Team-Bereich (Aufträge, Arbeitszeit, Urlaub, Verträge) für Chef und Mitarbeiter.
   // Nur Personen, die Sie in Claude eingeladen haben, können ihn öffnen. Leer lassen = kein Knopf.
+  // Ladevolumen Ihres Transporters in m³ (für die grobe Schätzung in der Kunden-App)
+  transporterM3: 12,
+
   teamApp: "https://claude.ai/artifact/UAJRavigwn6eVYrqJ6oktT"
 };
