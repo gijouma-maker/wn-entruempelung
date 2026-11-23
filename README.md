@@ -29,6 +29,18 @@ JoumHome bleibt unverändert unter `https://gijouma-maker.github.io/joumhome-tes
   - Mitarbeiter-Ansicht: `…/team/?rolle=mitarbeiter`
 - Team-Bereich **mit KI und gemeinsamer Datenbank**: der Claude-Link aus `config.js` (`teamApp`)
 
+## Neu (23.11.2026, Recht DE/NL)
+- **Widerrufsrecht** (DE + NL): Belehrung + Muster-Formular automatisch im Angebot für Privatkunden, beim Auftrag unterschreiben „Belehrung erhalten“ und „vorzeitiger Beginn“, Anzeige der Frist, Warnung vor Arbeitsbeginn.
+- **Impressum, Datenschutzerklärung, Widerrufsrecht** in der Kunden-App (Deutsch + Niederländisch) – Daten in `config.js` eintragen (der Team-Bereich erzeugt die Zeilen unter Team & Firma → Rechtliches).
+- **Schriften lokal** (Ordner `fonts`), keine Verbindung mehr zu Google Fonts.
+- **Belege nach GoBD**: Monat festschreiben, Stornieren statt Löschen, Änderungsprotokoll.
+- **Kassenbuch** für Barzahlungen mit Anfangsbestand, Einlagen/Entnahmen, Kassenzählung und CSV.
+- **Entsorgungsnachweis** pro Auftrag (Wiegeschein mit KI auslesen), Hinweise zu Elektrogeräten und Sondermüll, Felder für Anzeige § 53 KrWG, Erlaubnis § 54, VIHB.
+- **Niederlande**: Land/Sprache pro Auftrag, Angebot/Rechnung/Mahnung auf Niederländisch, Checkliste (postedworkers.nl, Entsorgung in NL), btw verlegd für NL-Firmen, Mahnung nach WIK (14-Tage-Brief).
+- **E-Rechnung (XRechnung-XML)** für Firmenkunden als Vorbereitung auf 2028.
+- **Personal**: Hinweis Schriftform bei befristeten Verträgen, Krankmeldung ohne Diagnose, KI-Einweisung zum Bestätigen.
+- Ausführliche Übersicht: Dokument „Rechtliche Prüfung WN – DE/NL“ im Claude-Projekt WO.
+
 ## Neu (23.11.2026)
 **Team-Bereich**
 - **KI-Volumen aus Fotos**: m³, Personen, Dauer, Sondermüll, verwertbare Gegenstände. Lernt aus der Nachkalkulation, wenn die KI meist zu hoch oder zu niedrig liegt.

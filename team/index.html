@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WN Entrümpelung · Aufträge</title>
 <meta name="theme-color" content="#0B0D11">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* Design wie die WN-App auf GitHub (Thema "Nacht") */
 :root{--page:#06080B;--bg:#0B0D11;--bgTop:#1B2230;--s1:#161A21;--s2:#12161D;--s3:#1F2530;--ink:#E5E7EB;--head:#FFFFFF;--mu:#9CA3AF;--soft:#AAB3C0;--cap:#C9CFD8;--line:#2A3240;--line2:#3A4352;
@@ -195,6 +193,7 @@ td.n,th.n{text-align:end;font-variant-numeric:tabular-nums}
 <script src="github-modus.js"></script>
 <script src="i18n.js"></script>
 <script src="flags.js"></script>
+<script src="recht.js"></script>
 <script>
 "use strict";
 /* ---------- Konstanten ---------- */
@@ -311,7 +310,7 @@ function render(){
 /* Start (Chef) */
 function monthSum(ym){
   const ein=list("einnahmen").filter(e=>String(e.datum).startsWith(ym)).reduce((a,e)=>a+(Number(e.brutto)||0),0);
-  const aus=list("belege").filter(b=>String(b.datum).startsWith(ym)).reduce((a,b)=>a+(Number(b.brutto)||0),0);
+  const aus=aktiv("belege").filter(b=>String(b.datum).startsWith(ym)).reduce((a,b)=>a+(Number(b.brutto)||0),0);
   return{ein,aus};
 }
 function startHint(){const o=allUrlaub().filter(a=>a.status==="beantragt").length,run=[],kr=teamList().filter(t=>krankNow(t._id)),ue=offeneRechnungen().filter(x=>x.ueber>0).length;return (o||kr.length||ue)?`<div class="card" style="display:flex;flex-direction:column;gap:6px">${ue?`<button class="btn" data-act="tab" data-tab="geld" style="border-color:#f59e0b">${ue} überfällige Rechnung${ue>1?"en":""} – Erinnerung senden</button>`:""}${o?`<button class="btn" data-act="tab" data-tab="team">${o} offene${o===1?"r":""} Urlaubsantr${o===1?"ag":"äge"} prüfen</button>`:""}${kr.length?`<div class="small">Krank gemeldet: ${kr.map(t=>esc(t.name)).join(", ")}</div>`:""}</div>`:""}
@@ -376,13 +375,18 @@ function ticketForm(t={}){
    <div class="field"><label>Adresse</label><input id="f_kadr" value="${esc(k.adresse||"")}"></div>
    <div class="field"><label>Termin</label><input id="f_termin" type="datetime-local" value="${esc(t.termin||"")}"></div>
    <div class="field"><label>Angebot € (brutto)</label><input id="f_angebot" type="number" step="0.01" value="${t.angebot??""}"></div>
+   <div class="field"><label>Kunde ist</label><select id="f_typ"><option value="privat"${t.kundeTyp!=="firma"?" selected":""}>Privatkunde (Widerrufsrecht)</option><option value="firma"${t.kundeTyp==="firma"?" selected":""}>Firma / Hausverwaltung</option></select></div>
+   <div class="field"><label>Land</label><select id="f_land"><option value="DE"${istNL(t)?"":" selected"}>Deutschland</option><option value="NL"${istNL(t)?" selected":""}>Niederlande</option></select></div>
+   <div class="field"><label>Sprache der Dokumente</label><select id="f_spr"><option value="">automatisch</option><option value="de"${t.sprache==="de"?" selected":""}>Deutsch</option><option value="nl"${t.sprache==="nl"?" selected":""}>Niederländisch</option></select></div>
+   <div class="field"><label>E-Mail Kunde</label><input id="f_kmail" type="email" value="${esc(k.email||"")}"></div>
+   <div class="field"><label>USt-IdNr. / btw-nummer (nur Firmen)</label><input id="f_kust" value="${esc(k.ustid||"")}"></div>
    <div class="field full"><label>Link zur Anzeige</label><input id="f_link" value="${esc(t.anzeigeLink||"")}" placeholder="https://www.kleinanzeigen.de/…"></div>
    <div class="field full"><label>Beschreibung</label><textarea id="f_besch">${esc(t.beschreibung||"")}</textarea></div>
   </div>`;
 }
 function readTicketForm(){
   const v=id=>$("#"+id).value.trim();
-  return{titel:v("f_titel"),leistung:v("f_leistung"),quelle:v("f_quelle"),kunde:{name:v("f_kname"),tel:v("f_ktel"),ort:v("f_kort"),adresse:v("f_kadr")},
+  return{titel:v("f_titel"),leistung:v("f_leistung"),quelle:v("f_quelle"),kundeTyp:v("f_typ")||"privat",land:v("f_land")||"DE",sprache:v("f_spr"),kunde:{name:v("f_kname"),tel:v("f_ktel"),ort:v("f_kort"),adresse:v("f_kadr"),email:v("f_kmail"),ustid:v("f_kust")},
     termin:v("f_termin"),angebot:num(v("f_angebot")),anzeigeLink:v("f_link"),beschreibung:v("f_besch")};
 }
 function newTicket(pre){
@@ -451,7 +455,8 @@ function openTicket(id,keep){
   </dl>
   ${chef?`<div class="row" style="margin-top:10px"><button class="btn sm" data-act="editTicket" data-id="${esc(id)}">Bearbeiten</button><button class="btn sm" data-act="assign" data-id="${esc(id)}">Mitarbeiter zuweisen</button><button class="btn sm" data-act="offerMsg" data-id="${esc(id)}">Angebot-Nachricht (KI)</button>${k.tel?`<button class="btn sm" data-act="custUpdate" data-id="${esc(id)}">Kunde informieren</button>`:""}</div>`:""}
   </div>
-  ${kalkCard(id,t)}${nachCard(id,t)}
+  ${nlCard(id,t)}${wrCard(id,t)}${kalkCard(id,t)}${entsCard(id,t)}${nachCard(id,t)}
+  ${chef&&t.rechnung&&!istPrivat(t)?`<div class="row"><button class="btn sm" data-act="eRech" data-id="${esc(id)}">E-Rechnung (XRechnung) erstellen</button><span class="small">Für Firmenkunden – Pflicht ab 2028</span></div>`:""}
   ${chef&&t.rechnung&&t.status!=="Bezahlt"?`<div class="row"><button class="btn" data-act="mahn" data-id="${esc(id)}">${esc(MAHN[Math.min(2,(t.mahnungen||[]).length)])} erstellen</button>${(t.mahnungen||[]).length?`<span class="small">${(t.mahnungen||[]).length} Mahnstufe(n) versendet</span>`:""}</div>`:""}
   <div class="spread"><h3>Fotos & Protokoll (${fotos.length})</h3><button class="btn sm pri" data-act="addFoto" data-id="${esc(id)}">${svg("cam").replace("<svg","<svg width=16 height=16")} Foto hinzufügen</button></div>
   ${fotos.length?`<div class="gallery">${fotos.map(f=>`<div class="g" data-act="viewFoto" data-src="${esc(blob(f.id))}" data-cap="${esc(`${f.typ} · ${fDT(f.t)} · ${nameOf(f.von)}${f.notiz?" · "+f.notiz:""}`)}"><img src="${esc(blob(f.id))}" alt="${esc(f.typ)}" loading="lazy"><div class="cap">${esc(f.typ)} · ${esc(fD(f.t))}</div></div>`).join("")}</div>`:`<div class="empty">Noch keine Fotos. Machen Sie Vorher- und Nachher-Fotos – sie werden mit Zeit und Mitarbeiter gespeichert.</div>`}
@@ -466,6 +471,7 @@ function openTicket(id,keep){
 async function setStatus(id,s,force){
   const t=st.data.tickets[id];if(!t||t.status===s)return;
   if(s==="Bezahlt"){payDialog(id);return}
+  if(s==="In Arbeit"&&!force){const w=startWarnungen(t);if(w.length&&st.warnOk!==id){st.warnOk=id;toast("Achtung: "+w.join(" ")+" Nochmal tippen = trotzdem starten.");return}st.warnOk=null;if(w.length)await logT(id,"Gestartet trotz Hinweis: "+w.join(" "))}
   if(s==="Erledigt"&&!force&&!(t.fotos||[]).some(f=>f.typ==="Nachher")){
     if(!isChef()){toast("Bitte zuerst ein Nachher-Foto der fertigen Arbeit machen");st.fotoTyp="Nachher";st.afterFoto={id,s};await addFoto(id);return}
     toast("Hinweis: Es gibt noch kein Nachher-Foto");
@@ -486,6 +492,7 @@ function payDialog(id){
 async function payGo(id){
   const t=st.data.tickets[id],b=num($("#p_b").value),d=$("#p_d").value,z=$("#p_z").value,m=num($("#p_m").value)||0;
   if(!b){toast("Bitte Betrag eintragen");return}
+  if(istFest(d)){toast("Dieser Monat ist festgeschrieben – bitte Zahlungsdatum prüfen");return}
   const kk=t.rechnung?.kalk||t.kalk,fac=kk&&kk.zahlbetrag?b/kk.zahlbetrag:0;
   const anteile=kk?{arbeit35a:r2(kk.anteil35a*fac),arbeit:r2(kk.anteil.arbeit*fac),fahrt:r2(kk.anteil.fahrt*fac),entsorgung:r2(kk.anteil.entsorgung*fac),material:r2(kk.anteil.material*fac),wertanrechnung:r2(kk.wert||0)}:null;
   await save("einnahmen","t_"+id,{datum:d,brutto:b,mwstSatz:m,mwst:mwstOf(b,m),beschreibung:`#${t.nr} ${t.titel||t.leistung||""} · ${t.kunde?.name||""}`.trim(),ticketId:id,zahlart:z,erstellt:nowIso(),von:st.me,...(anteile?{anteile}:{}),...(t.rechnung?{rechnungNr:t.rechnung.nr}:{})});
@@ -570,7 +577,7 @@ function sigText(t,typ){
   if(typ==="nachtrag")return nachtragText(t,ntEx());
   const k=t.kunde||{},f=st.firma,firma=f.name||"WN Entrümpelung",preis=t.preisFinal??t.angebot;
   const was=[t.leistung,t.titel].filter(Boolean).join(" – ")||"Auftrag";
-  if(typ==="auftrag")return `Ich beauftrage ${firma} mit folgendem Auftrag: ${was}${k.adresse||k.ort?` (${[k.adresse,k.ort].filter(Boolean).join(", ")})`:""}${t.termin?`, Termin ${fDT(t.termin)}`:""}${preis?`, zum Preis von ${eur(preis)} ${f.kleinunternehmer?"(gemäß § 19 UStG ohne MwSt.)":"inkl. MwSt."}`:""}, wie in diesem Auftrag #${t.nr} beschrieben.`;
+  if(typ==="auftrag")return `Ich beauftrage ${firma} mit folgendem Auftrag: ${was}${k.adresse||k.ort?` (${[k.adresse,k.ort].filter(Boolean).join(", ")})`:""}${t.termin?`, Termin ${fDT(t.termin)}`:""}${preis?`, zum Preis von ${eur(preis)} ${f.kleinunternehmer?"(gemäß § 19 UStG ohne MwSt.)":"inkl. MwSt."}`:""}, wie in diesem Auftrag #${t.nr} beschrieben.`+(istPrivat(t)?wrZusatz(t,wrEx()):"");
   return `Ich bestätige, dass die Arbeiten aus Auftrag #${t.nr} (${was}) am ${fD(today())} vollständig und ordnungsgemäß ausgeführt wurden. Ich nehme die Leistung hiermit ab.`;
 }
 async function sha256(txt){try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(txt));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}catch(e){return""}}
@@ -579,7 +586,7 @@ function signDialog(id){
   const def=["Erledigt","Bezahlt"].includes(t.status)?"uebergabe":t.status==="In Arbeit"?"abnahme":"auftrag";
   openSheet(`<div class="spread"><h2>Unterschrift · #${esc(t.nr)}</h2><button class="btn sm" data-act="openTicket" data-id="${esc(id)}">Zurück</button></div>
   <div class="field"><label>Was wird unterschrieben?</label><select id="sg_typ">${Object.entries(SIGTYP).map(([v,l])=>`<option value="${v}"${v===def?" selected":""}>${l}</option>`).join("")}</select></div>
-  ${sigExHtml()}${vmExHtml(t)}${ntExHtml()}
+  ${sigExHtml()}${vmExHtml(t)}${ntExHtml()}${wrExHtml({...t,_id:id})}
   <div class="card" style="background:var(--s2)"><div class="small" style="color:var(--mu);margin-bottom:4px">Bestätigung</div><div id="sg_txt" style="white-space:pre-wrap"></div></div>
   <div class="field"><label>Name des Kunden (in Druckbuchstaben)</label><input id="sg_name" value="${esc(k.name||"")}" autocomplete="off"></div>
   <div class="field"><label>Anmerkung des Kunden (optional)</label><input id="sg_anm" placeholder="z. B. Kratzer im Flur war schon vorher da"></div>
@@ -589,7 +596,7 @@ function signDialog(id){
   <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px"><input type="checkbox" id="sg_ok" style="width:22px;height:22px;flex:none;margin-top:1px"> Ich habe den Text oben gelesen und bestätige ihn mit meiner Unterschrift.</label>
   <button class="btn pri big" id="sgGo">Unterschrift speichern</button>`);
   if(st.ntPre){const x=st.ntPre;st.ntPre=null;$("#sg_typ").value="nachtrag";$("#nt_grund").value=x.grund;$("#nt_betrag").value=x.betrag;$("#nt_art").value=x.art}
-  const upTxt=()=>{const ty=$("#sg_typ").value;$("#sg_ex").style.display=ty==="uebergabe"?"":"none";$("#sg_vm").style.display=ty==="vollmacht"?"":"none";$("#sg_nt").style.display=ty==="nachtrag"?"":"none";$("#sg_txt").textContent=sigText(t,ty)};upTxt();$("#sg_typ").onchange=upTxt;
+  const upTxt=()=>{const ty=$("#sg_typ").value;$("#sg_ex").style.display=ty==="uebergabe"?"":"none";$("#sg_vm").style.display=ty==="vollmacht"?"":"none";$("#sg_nt").style.display=ty==="nachtrag"?"":"none";if($("#sg_wr"))$("#sg_wr").style.display=ty==="auftrag"?"":"none";$("#sg_txt").textContent=sigText(t,ty)};upTxt();$("#sg_typ").onchange=upTxt;
   const c=$("#sg_c"),dpr=Math.max(1,window.devicePixelRatio||1);let drawn=false,down=false,last=null;
   const size=()=>{c.width=Math.round(c.clientWidth*dpr);c.height=Math.round(c.clientHeight*dpr);const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.lineCap="round";g.lineJoin="round";g.strokeStyle="#111";g.lineWidth=2.6*dpr;drawn=false};
   requestAnimationFrame(size);
@@ -610,11 +617,13 @@ function signDialog(id){
       const r=await st.assets.upload(png);
       const tt=st.data.tickets[id],at=nowIso(),text=sigText(tt,typ),anm=$("#sg_anm").value.trim();
       const hash=await sha256(JSON.stringify({nr:tt.nr,titel:tt.titel,leistung:tt.leistung,kunde:tt.kunde,beschreibung:tt.beschreibung,termin:tt.termin,preis:tt.preisFinal??tt.angebot??null,fotos:(tt.fotos||[]).map(f=>f.id),typ,text,name,anm,bild:r.id,at}));
-      const ex=typ==="uebergabe"?sigEx():typ==="vollmacht"?vmEx():typ==="nachtrag"?ntEx():null;
+      const ex=typ==="uebergabe"?sigEx():typ==="vollmacht"?vmEx():typ==="nachtrag"?ntEx():typ==="auftrag"?wrEx():null;
+      if(typ==="auftrag"&&istPrivat(tt)&&ex&&!ex.erhalten){toast("Bitte bestätigen: Widerrufsbelehrung und Formular wurden übergeben");b.disabled=false;b.textContent="Unterschrift speichern";return}
       if(typ==="nachtrag"&&(!ex.grund||!ex.betrag)){toast("Bitte Grund und Mehrbetrag eintragen");b.disabled=false;b.textContent="Unterschrift speichern";return}
       const sig={id:r.id,typ,text,name,anm,t:at,von:st.me,hash,...(ex?{ex}:{})};
       await logT(id,`Unterschrift: ${SIGTYP[typ]} – ${name}`,{signaturen:[...(tt.signaturen||[]),sig]});
       if(typ==="nachtrag")await nachtragAdd(id,ex,`Unterschrift ${name}`);
+      if(typ==="auftrag"&&istPrivat(tt))await wrNachUnterschrift(id,ex);
       toast("Unterschrift gespeichert");openTicket(id);
     }catch(e){toast(e.message||"Speichern fehlgeschlagen");b.disabled=false;b.textContent="Unterschrift speichern"}
   };
@@ -847,7 +856,7 @@ function vEditDialog(k){
   openSheet(`<div class="spread"><h2>Vertragsdaten · ${esc(maName(k))}</h2><button class="btn sm" data-act="openMa" data-k="${esc(k)}">Zurück</button></div>
   <div class="fields"><div class="field"><label for="v_art">Art</label><select id="v_art">${VART.map(x=>`<option${x===v.art?" selected":""}>${x}</option>`).join("")}</select></div>
   <div class="field"><label for="v_t">Tätigkeit</label><input id="v_t" value="${esc(v.taetigkeit||"Helfer Entrümpelung")}"></div>
-  <div class="field"><label for="v_b">Beginn</label><input id="v_b" type="date" value="${esc(v.beginn||today())}"></div><div class="field"><label for="v_e">Befristet bis (optional)</label><input id="v_e" type="date" value="${esc(v.ende||"")}"></div>
+  <div class="field"><label for="v_b">Beginn</label><input id="v_b" type="date" value="${esc(v.beginn||today())}"></div><div class="field"><label for="v_e">Befristet bis (optional)</label><input id="v_e" type="date" value="${esc(v.ende||"")}"><span class="small" style="color:#f59e0b">Befristung nur wirksam mit eigenhändiger Unterschrift auf Papier (§ 14 Abs. 4 TzBfG) – sonst gilt der Vertrag unbefristet.</span></div>
   <div class="field"><label for="v_s">Stunden pro Woche</label><input id="v_s" type="number" step="0.5" value="${esc(v.stunden??"")}"></div><div class="field"><label for="v_u">Urlaubstage pro Jahr</label><input id="v_u" type="number" value="${esc(v.urlaubstage??20)}"></div>
   <div class="field"><label for="v_l">Vergütung €</label><input id="v_l" type="number" step="0.01" value="${esc(v.lohn??"")}"></div><div class="field"><label for="v_la">pro</label><select id="v_la">${["pro Stunde","pro Monat"].map(x=>`<option${x===v.lohnart?" selected":""}>${x}</option>`).join("")}</select></div>
   <div class="field full"><label for="v_p">Probezeit</label><input id="v_p" value="${esc(v.probezeit||"6 Monate")}"></div></div>
@@ -872,6 +881,7 @@ function vSignText(k){const v=doc("vertraege",k)||{},n=(v.ausruestung||[]).filte
 function vSignDialog(k){
   const v=doc("vertraege",k);if(!v)return;
   openSheet(`<div class="spread"><h2>Vertrag bestätigen</h2><button class="btn sm" data-act="${isChef()?"openMa":"close"}" data-k="${esc(k)}">Zurück</button></div>
+  ${v.ende?`<div class="note" style="border-color:#f59e0b">Befristeter Vertrag: Die Unterschrift in der App reicht für die Befristung nicht. Bitte zusätzlich das PDF ausdrucken und beide auf Papier unterschreiben – vor Arbeitsbeginn.</div>`:""}
   <div class="card" style="white-space:pre-wrap">${esc(vSignText(k))}</div>
   <div class="field"><label for="vs_n">Name in Druckbuchstaben</label><input id="vs_n" value="${esc(maName(k))}"></div>
   <div class="field"><label>Unterschrift – mit dem Finger ins weiße Feld</label><canvas id="vs_c" aria-label="Unterschriftenfeld" style="width:100%;height:180px;background:#fff;border-radius:12px;touch-action:none;display:block"></canvas></div>
@@ -959,7 +969,7 @@ function zCsv(){const ym=today().slice(0,7),rows=[["Mitarbeiter","Datum","Beginn
 
 /* --- Mitarbeiter: Ich-Tab --- */
 function vIch(){const k=meKey(),t=doc("team",k);return `${t?"":`<div class="note">Der Chef hat Sie noch nicht ins Team aufgenommen. Telefon und Dokumente können Sie trotzdem schon eintragen.</div>`}
-  <h2 class="kcap">Mein Vertrag</h2>${vVertrag(k,false)}<h2 class="kcap">Kontakt & Dokumente</h2>${vProfil(k,false)}`}
+  ${kiCard()}<h2 class="kcap">Mein Vertrag</h2>${vVertrag(k,false)}<h2 class="kcap">Kontakt & Dokumente</h2>${vProfil(k,false)}`}
 
 /* --- Heute im Team, Krankmeldung --- */
 function absOf(k,day){day=day||today();const s=doc("status",k)||{};if(s.abw&&s.abw.von<=day&&(!s.abw.bis||s.abw.bis>=day))return{typ:"abwesend",bis:s.abw.bis};const u=allUrlaub().find(a=>a.key===k&&a.status==="genehmigt"&&a.von<=day&&a.bis>=day);return u?{typ:u.art==="Urlaub"?"Urlaub":u.art,bis:u.bis}:null}
@@ -978,7 +988,7 @@ function kNewDialog(){
   openSheet(`<div class="spread"><h2>Krank melden</h2><button class="btn sm" data-act="close">Abbrechen</button></div>
   <p class="small" style="margin:0">Der Chef sieht Ihre Krankmeldung. Ihre Kollegen sehen nur, dass Sie abwesend sind, nicht warum.</p>
   <div class="fields"><div class="field"><label for="kr_v">Ab</label><input id="kr_v" type="date" value="${today()}"></div><div class="field"><label for="kr_b">Voraussichtlich bis</label><input id="kr_b" type="date" value="${today()}"></div>
-  <div class="field full"><label for="kr_n">Nachricht an den Chef (optional)</label><input id="kr_n" placeholder="z. B. Arzttermin um 10 Uhr, AU kommt"></div></div>
+  <div class="field full"><label for="kr_n">Nachricht an den Chef (optional)</label><input id="kr_n" placeholder="z. B. AU kommt – bitte keine Diagnose angeben"></div></div>
   <label style="display:flex;gap:10px;align-items:center;font-size:14px"><input type="checkbox" id="kr_au" style="width:22px;height:22px"> Ich lade jetzt ein Foto der AU-Bescheinigung hoch</label>
   <button class="btn pri big" data-act="kSave">Krankmeldung senden</button>`);
 }
@@ -996,7 +1006,7 @@ function maKrank(k){const kr=doc("krank",k),ms=((kr&&kr.meldungen)||[]).slice().
 
 /* Belege */
 function bItem(b){
-  return `<div class="item" data-act="editBeleg" data-id="${esc(b._id)}" role="button" tabindex="0" style="flex-direction:row;align-items:center;gap:12px">
+  return `<div class="item" data-act="editBeleg" data-id="${esc(b._id)}" role="button" tabindex="0" style="flex-direction:row;align-items:center;gap:12px;${b.storniert?"opacity:.55;text-decoration:line-through":""}">
    ${b.bildId?`<img src="${esc(blob(b.bildId))}" alt="" style="width:52px;height:52px;border-radius:10px;object-fit:cover;flex:none">`:`<div style="width:52px;height:52px;border-radius:10px;background:var(--s2);flex:none"></div>`}
    <div style="flex:1;min-width:0"><div class="head"><b>${esc(b.haendler||b.kategorie||"Beleg")}</b><b style="font-weight:500">${eur(b.brutto)}</b></div>
    <div class="meta">${esc(fD(b.datum))} · ${esc(b.kategorie||"")}${b.mwst?` · MwSt ${eur(b.mwst)}`:""}${b.ticketId&&st.data.tickets[b.ticketId]?` · #${esc(st.data.tickets[b.ticketId].nr)}`:""}${isChef()&&b.von?` · ${esc(nameOf(b.von))}`:""}${b.ki?" · KI":""}${b.privat?` · <span style="color:#f59e0b">privat ${eur(b.privat)} getrennt</span>`:""}</div></div></div>`;
@@ -1004,7 +1014,7 @@ function bItem(b){
 function vBelege(){
   let bs=list("belege");if(!isChef())bs=bs.filter(b=>b.von===st.me);
   bs.sort((a,b)=>String(b.datum).localeCompare(a.datum));
-  const ym=today().slice(0,7),sum=bs.filter(b=>String(b.datum).startsWith(ym)).reduce((a,b)=>a+(Number(b.brutto)||0),0);
+  const ym=today().slice(0,7),sum=bs.filter(b=>!b.storniert&&String(b.datum).startsWith(ym)).reduce((a,b)=>a+(Number(b.brutto)||0),0);
   return `<button class="btn pri big" data-act="scan">${svg("cam").replace("<svg","<svg width=20 height=20")} Beleg fotografieren – KI liest ihn aus</button>
   <div class="small">Tanken, Werkzeug, Deponie, Material … Foto machen, die KI erkennt Händler, Datum, Betrag, MwSt und Kategorie. Sie prüfen und speichern.</div>
   <div class="spread"><h2>${isChef()?"Alle Belege":"Meine Belege"}</h2><span class="small">Diesen Monat: ${eur(sum)}</span></div>
@@ -1048,7 +1058,7 @@ async function scan(ticketId){
     $("#kiSt").innerHTML=pv.length?`<span>✓ Von der KI ausgefüllt. <b style="color:#f59e0b">${pv.length} private Position${pv.length>1?"en":""} erkannt (${eur(pv.reduce((s,x)=>s+x.brutto,0))})</b> – wird getrennt gebucht. Bitte prüfen.</span>`:"✓ Von der KI ausgefüllt – bitte kurz prüfen.";
   }catch(e){$("#kiSt").innerHTML=`KI konnte den Beleg nicht lesen${e&&e.code==="not_granted"?" (KI nicht freigegeben)":""}. Bitte von Hand ausfüllen.`}})();
   st.belegPos=null;
-  $("#bGo").onclick=async()=>{const d=readBelegPos(readBeleg());if(!d.brutto&&!d.privat){toast("Bitte Betrag eintragen");return}
+  $("#bGo").onclick=async()=>{const d=readBelegPos(readBeleg());if(!d.brutto&&!d.privat){toast("Bitte Betrag eintragen");return}if(istFest(d.datum)){toast("Dieser Monat ist festgeschrieben – bitte Datum prüfen oder im aktuellen Monat erfassen");return}
     $("#bGo").disabled=true;$("#bGo").textContent="Wird gespeichert …";
     try{const aid=await upload(small);await save("belege",null,{...d,bildId:aid,ki:kiOk,von:st.me,erstellt:nowIso()});
       if(d.ticketId)await logT(d.ticketId,`Beleg: ${d.haendler||d.kategorie} ${eur(d.brutto)}`);
@@ -1060,13 +1070,15 @@ function editBeleg(id){
   openSheet(`<div class="spread"><h2>Beleg</h2><button class="btn sm" data-act="close">Schließen</button></div>
   ${b.bildId?`<a href="${esc(blob(b.bildId))}" target="_blank" rel="noopener"><img class="prev" src="${esc(blob(b.bildId))}" alt="Beleg"></a>`:""}
   ${belegForm(b)}${b.positionen?.length?posEditor(b.positionen):""}<div class="small">Erfasst ${esc(fDT(b.erstellt))}${b.von?" von "+esc(nameOf(b.von)):""}${b.ki?" · von KI ausgelesen":""}${b.geaendert?` · geändert ${esc(fDT(b.geaendert))}`:""}</div>
-  ${can?`<div class="row" style="justify-content:space-between"><button class="btn sm" data-act="delBeleg" data-id="${esc(id)}" style="color:#ff8a8a">Löschen</button><button class="btn pri" data-act="saveBeleg" data-id="${esc(id)}">Änderungen speichern</button></div>`:""}`);
+  ${belegHistorie(b)}
+  ${b.storniert?`<div class="note" style="border-color:#ff8a8a">Storniert am ${esc(fDT(b.storniert.t))}: ${esc(b.storniert.grund)}</div>`:istFest(b.datum)?`<div class="note">Dieser Monat ist festgeschrieben (GoBD). Der Beleg kann nicht mehr geändert werden. Korrekturen bitte als neuen Beleg (z. B. Gutschrift) im aktuellen Monat erfassen.</div>`:can?`<div class="row" style="justify-content:space-between;align-items:flex-end"><div class="field" style="flex:1;min-width:160px"><label>Grund für Stornierung</label><input id="st_g" placeholder="z. B. doppelt erfasst"></div><button class="btn sm" data-act="bStorno" data-id="${esc(id)}" style="color:#ff8a8a">Stornieren</button><button class="btn pri" data-act="saveBeleg" data-id="${esc(id)}">Änderungen speichern</button></div>`:""}`);
+  if(b.storniert||istFest(b.datum))document.querySelectorAll("#sheet input,#sheet select").forEach(x=>{if(x.id!=="st_g")x.disabled=true});
   if(b.positionen?.length)posRefresh();
 }
 
 /* Finanzen */
 function yearData(y){
-  const e=list("einnahmen").filter(x=>String(x.datum).startsWith(y)),a=list("belege").filter(x=>String(x.datum).startsWith(y));
+  const e=list("einnahmen").filter(x=>String(x.datum).startsWith(y)),a=aktiv("belege").filter(x=>String(x.datum).startsWith(y));
   const m=MONATE.map((_,i)=>{const ym=`${y}-${pad(i+1)}`;const ee=e.filter(x=>String(x.datum).startsWith(ym)),aa=a.filter(x=>String(x.datum).startsWith(ym));
     return{ein:ee.reduce((s,x)=>s+(+x.brutto||0),0),einU:ee.reduce((s,x)=>s+(+x.mwst||0),0),aus:aa.reduce((s,x)=>s+(+x.brutto||0),0),ausV:aa.reduce((s,x)=>s+(+x.mwst||0),0)}});
   const kat={};a.forEach(x=>belegSplits(x).forEach(sp=>{kat[sp.kategorie]=(kat[sp.kategorie]||0)+sp.brutto}));
@@ -1076,7 +1088,7 @@ function vGeld(){
   const y=st.year,d=yearData(y),T=d.m.reduce((s,x)=>({ein:s.ein+x.ein,einU:s.einU+x.einU,aus:s.aus+x.aus,ausV:s.ausV+x.ausV}),{ein:0,einU:0,aus:0,ausV:0});
   const years=[...new Set([String(new Date().getFullYear()),...list("einnahmen").map(x=>String(x.datum).slice(0,4)),...list("belege").map(x=>String(x.datum).slice(0,4))])].filter(Boolean).sort().reverse();
   const kats=Object.entries(d.kat).sort((a,b)=>b[1]-a[1]);
-  return `${mahnCard()}<div class="spread"><select class="rolesw" data-act="year">${years.map(x=>`<option${x===y?" selected":""}>${x}</option>`).join("")}</select><button class="btn sm" data-act="addEin">+ Einnahme ohne Ticket</button></div>
+  return `${mahnCard()}${festCard()}<div class="spread"><select class="rolesw" data-act="year">${years.map(x=>`<option${x===y?" selected":""}>${x}</option>`).join("")}</select><button class="btn sm" data-act="addEin">+ Einnahme ohne Ticket</button></div>
   <div class="kpis"><div class="kpi"><b>${eur(T.ein)}</b><span>Einnahmen brutto</span></div><div class="kpi"><b>${eur(T.aus)}</b><span>Ausgaben brutto</span></div>
   <div class="kpi"><b>${eur((T.ein-T.einU)-(T.aus-T.ausV))}</b><span>Ergebnis netto</span></div><div class="kpi"><b>${eur(T.einU-T.ausV)}</b><span>USt − Vorsteuer</span></div></div>
   <div class="card"><h3>Steuerberater-Export</h3><p class="small">Alle Einnahmen und Ausgaben als CSV-Datei (öffnet in Excel, für DATEV-Import vom Steuerberater geeignet). Die Belegfotos sehen Sie und Ihr Steuerberater über den Link in jeder Zeile, wenn Sie ihm die App freigeben.</p>
@@ -1085,7 +1097,7 @@ function vGeld(){
   <div class="card tw"><h3>Monate ${esc(y)}</h3><table><tr><th>Monat</th><th class="n">Einnahmen</th><th class="n">Ausgaben</th><th class="n">Ergebnis</th></tr>
    ${d.m.map((x,i)=>`<tr><td>${MONATE[i]}</td><td class="n">${eur(x.ein)}</td><td class="n">${eur(x.aus)}</td><td class="n">${eur(x.ein-x.aus)}</td></tr>`).join("")}
    <tr><th>Summe</th><th class="n">${eur(T.ein)}</th><th class="n">${eur(T.aus)}</th><th class="n">${eur(T.ein-T.aus)}</th></tr></table></div>
-  ${nachUebersicht()}
+  ${kasseCard()}${nachUebersicht()}
   <div class="card"><h3>Ausgaben nach Kategorie</h3>${kats.length?`<table>${kats.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${eur(v)}</td></tr>`).join("")}</table>`:`<div class="small">Noch keine Ausgaben in ${esc(y)}.</div>`}</div>
   <div class="card"><h3>Einnahmen ${esc(y)}</h3>${d.e.length?`<table>${d.e.sort((a,b)=>String(b.datum).localeCompare(a.datum)).map(x=>`<tr><td>${esc(fD(x.datum))}</td><td>${esc(x.beschreibung||"")}<div class="small">${esc(x.zahlart||"")}</div></td><td class="n">${eur(x.brutto)}</td></tr>`).join("")}</table>`:`<div class="small">Einnahmen entstehen, wenn Sie ein Ticket auf „Bezahlt“ setzen.</div>`}</div>
   <p class="small">Hinweis: Diese Übersicht hilft bei der Vorbereitung. Ob sie für Ihre Buchhaltung nach GoBD reicht, klären Sie bitte mit Ihrem Steuerberater. Belege nach dem Speichern nicht nachträglich verändern; Änderungen werden mit Zeitstempel vermerkt.</p>`;
@@ -1097,7 +1109,7 @@ function csv(){
   const rows=[["Datum","Art","Beschreibung","Kategorie","Konto SKR03 (Vorschlag)","Brutto","MwSt-Satz","MwSt","Netto","Zahlart","Auftrag","Rechnungs-Nr","davon Arbeit/Fahrt §35a (brutto)","Entsorgung (brutto)","Material (brutto)","Beleg-Link","Erfasst von"]];
   const nr=x=>x.ticketId&&st.data.tickets[x.ticketId]?"#"+st.data.tickets[x.ticketId].nr:"";
   list("einnahmen").filter(x=>String(x.datum).startsWith(pre)).forEach(x=>rows.push([fD(x.datum),"Einnahme",x.beschreibung,"Erlöse",kontoErloes(x.mwstSatz),n(x.brutto),x.mwstSatz??"",n(x.mwst),n((+x.brutto||0)-(+x.mwst||0)),x.zahlart,nr(x),x.rechnungNr||"",x.anteile?n(x.anteile.arbeit35a):"",x.anteile?n(x.anteile.entsorgung):"",x.anteile?n(x.anteile.material):"","",nameOf(x.von)]));
-  list("belege").filter(x=>String(x.datum).startsWith(pre)).forEach(x=>{
+  aktiv("belege").filter(x=>String(x.datum).startsWith(pre)).forEach(x=>{
     const txt=[x.haendler,x.notiz].filter(Boolean).join(" – "),link=x.bildId?base+blob(x.bildId):"";
     belegSplits(x).forEach(sp=>{if(sp.brutto)rows.push([fD(x.datum),"Ausgabe",txt+(x.positionen?.length?` (${x.positionen.filter(p=>!p.privat&&p.kategorie===sp.kategorie&&Number(p.satz)===Number(sp.satz)).map(p=>p.text).join(", ").slice(0,120)})`:""),sp.kategorie,SKR[sp.kategorie]||"4900",n(sp.brutto),sp.satz,n(sp.mwst),n(sp.brutto-sp.mwst),x.zahlart,nr(x),"","","","",link,nameOf(x.von)])});
     if(+x.privat)rows.push([fD(x.datum),/Firm|Überweisung/.test(x.zahlart||"")?"Privatentnahme":"Privat (nicht erstattet)",txt+" – privat: "+(x.positionen||[]).filter(p=>p.privat).map(p=>p.text).join(", ").slice(0,120),"Privat",/Firm|Überweisung/.test(x.zahlart||"")?KONTO_PRIVAT:"",n(x.privat),"","","",x.zahlart,nr(x),"","","","",link,nameOf(x.von)]);
@@ -1130,7 +1142,7 @@ function vTeam(){
    <div class="field" style="justify-content:flex-end"><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input id="c_k" type="checkbox" ${f.kleinunternehmer?"checked":""} style="width:20px;height:20px"> Kleinunternehmer (§ 19 UStG)</label></div>
   </div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" data-act="saveFirma">Speichern</button></div>
   <p class="small" style="margin:10px 0 0">Die Webseite steht automatisch am Ende jeder Antwort an Inserenten (Kleinanzeigen, Marktplaats, Facebook), jeder Angebot-Nachricht und jeder Kunden-Info.</p></div>
-  ${firmaExtraHtml()}<button class="btn pri big" data-act="saveFirma">Alle Firmendaten speichern</button>
+  ${firmaExtraHtml()}${rechtCard()}<button class="btn pri big" data-act="saveFirma">Alle Firmendaten speichern</button>${kiCard()}
   ${adFooterCard()}
   <div class="card"><h3>Kunden-Ansicht</h3><p class="small" style="margin:6px 0 0">Mit dem Schalter oben rechts (Chef/Mitarbeiter/Kunde) können Sie jede Ansicht ausprobieren. Kunden ohne Konto können in Claude-Apps keine Daten speichern. Deshalb schickt die Kunden-Ansicht die Anfrage mit Fotos per WhatsApp an Ihre Firmennummer. Sie übernehmen sie dann mit einem Klick als Ticket.</p></div>`;
 }
@@ -1397,7 +1409,7 @@ const fileSafe=s=>String(s||"").replace(/[^\wäöüÄÖÜß-]+/g,"_");
 
 /* ---------- Kalkulation ---------- */
 function kalkCompute(k){
-  const p=preise(),satz=mwstSatzFirma(),pos=[];
+  const p=preise(),satz=k.rc?0:mwstSatzFirma(),pos=[];
   const m3=Math.max(0,num(k.m3)||0),pers=Math.max(1,num(k.personen)||2),std=Math.max(0,num(k.stunden)||0),et=Math.max(0,num(k.etagen)||0);
   const fahrten=Math.max(1,num(k.fahrten)||Math.ceil(m3/(p.lkw||12))||1);
   if(std)pos.push({art:"arbeit",text:`Räumung, Demontage und Tragen: ${pers} Personen × ${String(std).replace(".",",")} Std.`,betrag:r2(pers*std*p.std)});
@@ -1489,7 +1501,7 @@ function kalkDialog(id,fromKi){
   <button class="btn pri big" data-act="kalkSave" data-id="${esc(id)}">Kalkulation speichern</button>`);
   kalkRefresh();
 }
-function kalkRead(){const e=st.kalkEdit;if(!e)return null;const g=i=>$("#kk_"+i)?.value??"";["m3","fahrten","personen","stunden","etagen","material","wert"].forEach(f=>e.k[f]=g(f));e.k.art=g("art")||"festpreis";
+function kalkRead(){const e=st.kalkEdit;if(!e)return null;const g=i=>$("#kk_"+i)?.value??"";["m3","fahrten","personen","stunden","etagen","material","wert"].forEach(f=>e.k[f]=g(f));e.k.art=g("art")||"festpreis";e.k.rc=reverseCharge(st.data.tickets[e.id]);
   document.querySelectorAll("[data-ks]").forEach(x=>{const s=e.k.sonder[Number(x.dataset.i)];if(s)s[x.dataset.ks]=x.dataset.ks==="art"?x.value:x.value});return e.k}
 function kalkRefresh(){
   const k=kalkCompute(kalkRead()||{}),el=$("#kkSum");if(!el)return;
@@ -1510,65 +1522,75 @@ async function kalkSave(id){
 
 /* ---------- Angebot & Rechnung (PDF mit Logo) ---------- */
 function kundeBlock(d,t,y){y=absender(d,y);const k=t.kunde||{},M=16;d.setFontSize(10);const ls=[k.name,k.adresse,k.ort&&!String(k.adresse||"").includes(k.ort)?k.ort:""].filter(Boolean);d.text(ls.length?ls:["–"],M,y);return y+Math.max(1,ls.length)*4.8+4}
-function posTable(d,k,y){
-  const M=16,W=210,need=h=>{if(y+h>PDF_END){d.addPage();y=20}};
-  d.setFont("helvetica","bold");d.setFontSize(9.5);d.setFillColor(238,242,248);d.rect(M,y-4.2,W-2*M,6.5,"F");d.text("Leistung",M+2,y);d.text("Betrag netto",W-M-2,y,{align:"right"});d.setFont("helvetica","normal");y+=6;
+function posTable(d,k,y,L){
+  L=L||DOK.de;const M=16,W=210,need=h=>{if(y+h>PDF_END){d.addPage();y=20}};
+  d.setFont("helvetica","bold");d.setFontSize(9.5);d.setFillColor(238,242,248);d.rect(M,y-4.2,W-2*M,6.5,"F");d.text(L.leistung,M+2,y);d.text(L.netto,W-M-2,y,{align:"right"});d.setFont("helvetica","normal");y+=6;
   for(const a of ["arbeit","fahrt","entsorgung","material"]){
     const ps=k.pos.filter(x=>x.art===a);if(!ps.length)continue;
-    need(14);d.setFont("helvetica","bold");d.setFontSize(9.5);d.text(ARTNAME[a],M+2,y);d.setFont("helvetica","normal");y+=4.8;
-    for(const x of ps){const ls=d.splitTextToSize(x.text,W-2*M-40);need(ls.length*4.5+1);d.setFontSize(9.5);d.text(ls,M+5,y);d.text(eur(x.betrag),W-M-2,y,{align:"right"});y+=ls.length*4.5+.8}
+    need(14);d.setFont("helvetica","bold");d.setFontSize(9.5);d.text(L[a],M+2,y);d.setFont("helvetica","normal");y+=4.8;
+    for(const x of ps){const ls=d.splitTextToSize(posTxt(x.text,L===DOK.nl),W-2*M-40);need(ls.length*4.5+1);d.setFontSize(9.5);d.text(ls,M+5,y);d.text(eur(x.betrag),W-M-2,y,{align:"right"});y+=ls.length*4.5+.8}
     y+=1.5;
   }
   d.setDrawColor(150);d.line(W-M-80,y-2,W-M,y-2);
   const sumL=(l,v,b)=>{need(6);d.setFont("helvetica",b?"bold":"normal");d.setFontSize(b?11:9.5);d.text(l,W-M-80,y+1);d.text(v,W-M-2,y+1,{align:"right"});y+=b?6.5:5};
-  sumL("Summe netto",eur(k.netto));
-  if(st.firma.kleinunternehmer)sumL("Umsatzsteuer","0,00 €");else sumL(`zzgl. ${k.mwstSatz} % MwSt`,eur(k.mwst));
-  sumL("Summe brutto",eur(k.brutto),!k.wert);
-  if(k.wert){sumL("abzgl. Wertanrechnung",`-${eur(k.wert)}`);sumL("Zu zahlen",eur(k.zahlbetrag),true)}
+  sumL(L.summeN,eur(k.netto));
+  if(st.firma.kleinunternehmer||k.rc)sumL(L.ust0,"0,00 €");else sumL(L.mwst(k.mwstSatz),eur(k.mwst));
+  sumL(k.rc?(L===DOK.nl?"Totaal":"Gesamtbetrag"):L.summeB,eur(k.brutto),!k.wert);
+  if(k.wert){sumL(L.wert,`-${eur(k.wert)}`);sumL(L.zahl,eur(k.zahlbetrag),true)}
   d.setFont("helvetica","normal");return y+3;
 }
 function text35a(k){return `Steuerhinweis für Privatkunden (§ 35a EStG): In diesem Betrag sind Arbeits- und Fahrtkosten von ${eur(k.anteil35a)} (inkl. MwSt) enthalten. 20 % davon können als haushaltsnahe Dienstleistung von der Einkommensteuer abgezogen werden – nur bei Zahlung per Überweisung, nicht bei Barzahlung. Entsorgung und Material sind nicht begünstigt.`}
+const zeig35a=(t,k)=>k.anteil35a&&istPrivat(t)&&!istNL(t);
 async function angebotPdf(id){
   const t=st.data.tickets[id];if(!t?.kalk){toast("Bitte zuerst Kalkulation anlegen");return}
+  const lg=docLang(t),L=DOK[lg];
   toast("Angebot wird erstellt …");await loadJsPdf();const {jsPDF}=window.jspdf,d=new jsPDF({unit:"mm",format:"a4"}),M=16,W=210,CW=W-2*M,k=t.kalk;
-  const atitel=k.art==="kva"?`Kostenvoranschlag K-${t.nr}`:`Festpreis-Angebot A-${t.nr}`;let y=await pdfHead(d,atitel,`Datum ${fD(today())}`);
+  const atitel=(k.art==="kva"?L.angebotKV+" K-":L.angebotFP+" A-")+t.nr;let y=await pdfHead(d,atitel,`${L.datum} ${fD(today())}`);
   y=kundeBlock(d,t,y);
   const P=(s,size=9.5)=>{d.setFontSize(size);for(const l of d.splitTextToSize(s,CW)){if(y>PDF_END){d.addPage();y=20}d.text(l,M,y);y+=size*.42+.7}};
-  P(`Vielen Dank für Ihre Anfrage. Für ${[t.leistung,t.titel].filter(Boolean).join(" – ")||"Ihren Auftrag"}${t.kunde?.adresse?` (${t.kunde.adresse})`:""} bieten wir Ihnen an:`,10);y+=2;
-  P(`Geschätztes Volumen: ca. ${String(k.m3).replace(".",",")} m³ · ${k.fahrten} Transporter-Ladung${k.fahrten>1?"en":""} · ${k.personen} Personen${t.termin?` · Wunschtermin ${fDT(t.termin)}`:""}`);y+=3;
-  y=posTable(d,k,y);
-  P("Im Preis enthalten: Demontage, Tragen, Abtransport und fachgerechte Entsorgung, besenreine Übergabe.");y+=1;
-  d.setFont("helvetica","bold");P(k.art==="kva"?"Unverbindlicher Kostenvoranschlag":"Festpreis");d.setFont("helvetica","normal");P(angebotsKlausel(k));y+=2;
-  if(k.anteil35a)P(text35a(k),9);y+=2;
-  P(`Dieses ${k.art==="kva"?"Kostenvoranschlag":"Angebot"} gilt 14 Tage bis ${fD(new Date(Date.now()+14*864e5).toISOString())}. Zur Beauftragung genügt eine kurze Nachricht per WhatsApp${st.firma.tel?` an ${st.firma.tel}`:""} oder Ihre Unterschrift vor Ort.`);
+  if(!istPrivat(t)&&t.kunde?.ustid)P(`${L.ustid}: ${t.kunde.ustid}`,9);
+  P(L.danke(wasTxt(t,lg==="nl")||(lg==="nl"?"uw opdracht":"Ihren Auftrag"),t.kunde?.adresse),10);y+=2;
+  P(L.vol(String(k.m3).replace(".",","),k.fahrten,k.personen,t.termin?fDT(t.termin):""));y+=3;
+  y=posTable(d,k,y,L);
+  P(L.enthalten);y+=1;
+  d.setFont("helvetica","bold");P(k.art==="kva"?(lg==="nl"?"Vrijblijvende kostenraming":"Unverbindlicher Kostenvoranschlag"):(lg==="nl"?"Vaste prijs":"Festpreis"));d.setFont("helvetica","normal");
+  P(lg==="nl"?KLAUSEL_NL[k.art==="kva"?"kva":"festpreis"](String(k.m3).replace(".",",")):angebotsKlausel(k));y+=2;
+  if(k.rc&&t.kunde?.ustid)P(L.rc(t.kunde.ustid),9);
+  if(zeig35a(t,k))P(text35a(k),9);y+=2;
+  P(L.gilt(k.art==="kva"?L.angebotKV:(lg==="nl"?"Offerte":"Angebot"),fD(addDays(today(),14)),st.firma.tel));
+  if(istPrivat(t)){y+=3;P(lg==="nl"?"Bij opdracht buiten onze bedrijfsruimte of op afstand heeft u een herroepingsrecht van 14 dagen – zie de bijgevoegde informatie en het modelformulier.":"Bei einem Auftrag außerhalb unserer Geschäftsräume oder per Telefon/WhatsApp/E-Mail haben Sie ein 14-tägiges Widerrufsrecht – siehe beiliegende Widerrufsbelehrung und Muster-Formular.",9);await pdfWiderruf(d,t,y,true)}
   pdfFoot(d,atitel);
   if(await savePdf(d,`${k.art==="kva"?"Kostenvoranschlag_K":"Angebot_A"}-${t.nr}_${fileSafe(t.kunde?.name||"Kunde")}.pdf`))await logT(id,`${atitel} erstellt (${eur(k.zahlbetrag)})`,{angebotStand:{zahlbetrag:k.zahlbetrag,art:k.art,datum:today()}});
 }
 function nextReNr(){const y=today().slice(0,4),pre=`RE-${y}-`;const max=Math.max(0,...list("tickets").map(t=>t.rechnung?.nr).filter(n=>String(n||"").startsWith(pre)).map(n=>Number(String(n).slice(pre.length))||0));return pre+String(max+1).padStart(3,"0")}
 async function rechnungPdf(id){
   const t=st.data.tickets[id];if(!t?.kalk){toast("Bitte zuerst Kalkulation anlegen");return}
-  const f=st.firma,fehlt=[!f.strasse&&"Adresse",!(f.steuernr||f.ustid)&&"Steuernummer",!f.iban&&"IBAN"].filter(Boolean);
-  if(fehlt.length&&!rechnungPdf.ok){rechnungPdf.ok=true;toast(`Für eine gültige Rechnung fehlen noch: ${fehlt.join(", ")} (Team & Firma). Nochmal tippen = trotzdem erstellen.`);return}
+  const f=st.firma,fehlt=[!f.strasse&&"Adresse",!(f.steuernr||f.ustid)&&"Steuernummer",!f.iban&&"IBAN",istNL(t)&&!f.ustid&&"USt-IdNr. (für NL nötig)",reverseCharge(t)===false&&istNL(t)&&!istPrivat(t)&&"btw-nummer des Kunden"].filter(Boolean);
+  if(fehlt.length&&!rechnungPdf.ok){rechnungPdf.ok=true;toast(`Für eine gültige Rechnung fehlen noch: ${fehlt.join(", ")}. Nochmal tippen = trotzdem erstellen.`);return}
   const as=t.angebotStand;
   if(!t.rechnung&&as&&t.kalk.zahlbetrag>as.zahlbetrag+0.01&&!rechnungPdf.ok2){const diff=t.kalk.zahlbetrag-as.zahlbetrag,pz=diff/as.zahlbetrag*100,nt=(t.kalk.nachtraege||[]).reduce((s,x)=>s+(+x.brutto||0),0),ohne=diff-nt;
     if(ohne>0.01&&(as.art!=="kva"||pz>=kvaSchwelle())){rechnungPdf.ok2=true;toast(as.art==="kva"?`Rechnung liegt ${Math.round(pz)} % über dem Kostenvoranschlag. Kunde muss vorher informiert sein (§ 649 BGB) – am besten Nachtrag. Nochmal tippen = trotzdem.`:`Festpreis vereinbart: ${eur(ohne)} Mehrbetrag ohne Zustimmung des Kunden. Bitte erst Nachtrag bestätigen lassen. Nochmal tippen = trotzdem.`);return}}
-  rechnungPdf.ok=false;rechnungPdf.ok2=false;
+  if(istNL(t)&&istPrivat(t)&&!rechnungPdf.ok3&&!t.rechnung){rechnungPdf.ok3=true;toast("NL-Privatkunde: Ob deutsche MwSt oder niederländische BTW gilt, hängt davon ab, ob die Leistung grundstücksbezogen ist – bitte mit dem Steuerberater klären. Nochmal tippen = mit deutscher MwSt erstellen.");return}
+  rechnungPdf.ok=false;rechnungPdf.ok2=false;rechnungPdf.ok3=false;
   let re=t.rechnung;
   if(!re){const ld=(t.verlauf||[]).find(v=>/→ Erledigt/.test(v.text))?.t||t.termin||today();re={nr:nextReNr(),datum:today(),leistung:String(ld).slice(0,10),kalk:t.kalk};await logT(id,`Rechnung ${re.nr} erstellt`,{rechnung:re})}
-  const k=re.kalk;toast("Rechnung wird erstellt …");await loadJsPdf();const {jsPDF}=window.jspdf,d=new jsPDF({unit:"mm",format:"a4"}),M=16,W=210,CW=W-2*M;
-  let y=await pdfHead(d,`Rechnung ${re.nr}`,`Rechnungsdatum ${fD(re.datum)}`);
+  const lg=docLang(t),L=DOK[lg],k=re.kalk;toast("Rechnung wird erstellt …");await loadJsPdf();const {jsPDF}=window.jspdf,d=new jsPDF({unit:"mm",format:"a4"}),M=16,W=210,CW=W-2*M;
+  let y=await pdfHead(d,`${L.rechnung} ${re.nr}`,`${lg==="nl"?"Factuurdatum":"Rechnungsdatum"} ${fD(re.datum)}`);
   y=kundeBlock(d,t,y);
   const P=(s,size=9.5)=>{d.setFontSize(size);for(const l of d.splitTextToSize(s,CW)){if(y>PDF_END){d.addPage();y=20}d.text(l,M,y);y+=size*.42+.7}};
-  P(`Leistung: ${[t.leistung,t.titel].filter(Boolean).join(" – ")||"Entrümpelung"}${t.kunde?.adresse?`, Ort der Leistung: ${t.kunde.adresse}`:""} · Leistungsdatum: ${fD(re.leistung)} · Auftrag #${t.nr}`,10);y+=3;
-  y=posTable(d,k,y);
-  d.setFont("helvetica","bold");d.setFontSize(10);d.text("Aufteilung für Ihre Steuer / Ihren Steuerberater",M,y);d.setFont("helvetica","normal");y+=5;
-  [["Arbeitskosten",k.anteil.arbeit],["Fahrtkosten",k.anteil.fahrt],["Entsorgung",k.anteil.entsorgung],["Material",k.anteil.material]].filter(x=>x[1]).forEach(([l,v])=>{d.setFontSize(9.5);d.text(`${l} (brutto)`,M+2,y);d.text(eur(v),M+90,y,{align:"right"});y+=4.8});
-  y+=2;if(k.anteil35a)P(text35a(k),9);y+=1;
-  if(f.kleinunternehmer)P("Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.");
-  P(`Bitte überweisen Sie ${eur(k.zahlbetrag)} bis zum ${fD(addDays(re.datum,zahlZiel()))}${f.iban?` auf das Konto IBAN ${f.iban}${f.bank?` (${f.bank})`:""}`:""}, Verwendungszweck ${re.nr}.`);
-  if(t.bezahltAm)P(`Bezahlt am ${fD(t.bezahltAm)} (${t.zahlart||""}). Vielen Dank!`);
-  pdfFoot(d,`Rechnung ${re.nr}`);
-  if(await savePdf(d,`Rechnung_${re.nr}_${fileSafe(t.kunde?.name||"Kunde")}.pdf`))await logT(id,`Rechnung ${re.nr} als PDF geladen`);
+  if(!istPrivat(t)&&t.kunde?.ustid)P(`${L.ustid} ${L.kunde.toLowerCase()}: ${t.kunde.ustid}`,9);
+  P(L.leistungZ(wasTxt(t,lg==="nl")||"Entrümpelung",t.kunde?.adresse,fD(re.leistung),t.nr),10);y+=3;
+  y=posTable(d,k,y,L);
+  if(!k.rc){d.setFont("helvetica","bold");d.setFontSize(10);d.text(L.aufteilung,M,y);d.setFont("helvetica","normal");y+=5;
+  [[L.arbeit,k.anteil.arbeit],[L.fahrt,k.anteil.fahrt],[L.entsorgung,k.anteil.entsorgung],[L.material,k.anteil.material]].filter(x=>x[1]).forEach(([l,v])=>{d.setFontSize(9.5);d.text(`${l} (${L.brutto})`,M+2,y);d.text(eur(v),M+90,y,{align:"right"});y+=4.8});y+=2}
+  if(zeig35a(t,k))P(text35a(k),9);y+=1;
+  if(k.rc)P(L.rc(t.kunde?.ustid||"–"));
+  else if(f.kleinunternehmer)P(L.ku);
+  P(L.ueberweisen(eur(k.zahlbetrag),fD(addDays(re.datum,zahlZiel())),f.iban,f.bank,re.nr));
+  if(t.bezahltAm)P(L.bezahlt(fD(t.bezahltAm),t.zahlart||""));
+  if(istPrivat(t)&&!istNL(t))P("Hinweis: Bewahren Sie diese Rechnung bitte auf (steuerliche Nachweise, z. B. für § 35a EStG).",8.5);
+  pdfFoot(d,`${L.rechnung} ${re.nr}`);
+  if(await savePdf(d,`${lg==="nl"?"Factuur":"Rechnung"}_${re.nr}_${fileSafe(t.kunde?.name||"Kunde")}.pdf`))await logT(id,`Rechnung ${re.nr} als PDF geladen`);
 }
 
 /* ---------- Belege: Positionen, Privatanteil, MwSt getrennt ---------- */
@@ -1619,7 +1641,7 @@ Regeln:
 async function stbPdf(){
   const y0=st.year,mo=$("#exM")?.value||"",pre=mo?`${y0}-${mo}`:y0,zeit=mo?`${MONATE[Number(mo)-1]} ${y0}`:`Jahr ${y0}`;
   const ein=list("einnahmen").filter(x=>String(x.datum).startsWith(pre)).sort((a,b)=>String(a.datum).localeCompare(b.datum));
-  const aus=list("belege").filter(x=>String(x.datum).startsWith(pre)).sort((a,b)=>String(a.datum).localeCompare(b.datum));
+  const aus=aktiv("belege").filter(x=>String(x.datum).startsWith(pre)).sort((a,b)=>String(a.datum).localeCompare(b.datum));
   if(!ein.length&&!aus.length){toast("Keine Buchungen im Zeitraum");return}
   toast("Übersicht wird erstellt …");await loadJsPdf();const {jsPDF}=window.jspdf,d=new jsPDF({unit:"mm",format:"a4"}),M=16,W=210;
   let y=await pdfHead(d,`Übersicht für den Steuerberater · ${zeit}`,`Erstellt ${fD(today())}`);
@@ -1763,7 +1785,7 @@ function firmaExtraHtml(){const f=st.firma,p=preise();return `
   <div class="card"><h3>Logo auf Dokumenten</h3><p class="small" style="margin:6px 0 10px">Ihr Logo steht automatisch oben auf jedem Angebot, jeder Rechnung, jedem Protokoll, Vertrag und der Steuerberater-Übersicht.</p>
    <div class="row"><img id="lgPrev" alt="Logo" style="height:56px;background:#fff;border-radius:8px;padding:4px"><button class="btn sm" data-act="logoUp">Eigenes Logo hochladen</button>${f.logoId?`<button class="btn sm" data-act="logoStd">WN-Logo verwenden</button>`:""}</div></div>`}
 function readFirmaExtra(){const v=i=>($("#"+i)?.value||"").trim(),n=i=>num(v(i));
-  return{inhaber:v("c_inh"),email:v("c_mail"),strasse:v("c_str"),plz:v("c_plz"),ort:v("c_ort"),steuernr:v("c_stnr"),ustid:v("c_ust"),iban:v("c_iban").toUpperCase(),bank:v("c_bank"),bic:v("c_bic").toUpperCase(),zahlungsziel:n("c_ziel")||14,mahngebuehr:n("c_mg")||0,kvaSchwelle:n("c_kva")||10,
+  return{inhaber:v("c_inh"),email:v("c_mail"),strasse:v("c_str"),plz:v("c_plz"),ort:v("c_ort"),steuernr:v("c_stnr"),ustid:v("c_ust"),rechtsform:v("c_rf")||"Einzelunternehmen",anzeige53:v("c_a53"),erlaubnis54:v("c_e54"),vihb:v("c_vihb"),iban:v("c_iban").toUpperCase(),bank:v("c_bank"),bic:v("c_bic").toUpperCase(),zahlungsziel:n("c_ziel")||14,mahngebuehr:n("c_mg")||0,kvaSchwelle:n("c_kva")||10,
     preise:{std:n("c_p_std")??PREIS_DEF.std,m3:n("c_p_m3")??PREIS_DEF.m3,anfahrt:n("c_p_anfahrt")??PREIS_DEF.anfahrt,fahrt:n("c_p_fahrt")??PREIS_DEF.fahrt,etage:n("c_p_etage")??PREIS_DEF.etage,lkw:n("c_p_lkw")||PREIS_DEF.lkw,lohn:n("c_p_lohn")??PREIS_DEF.lohn}}}
 async function showLogoPrev(){const im=$("#lgPrev");if(!im)return;try{const l=await logoPng();if($("#lgPrev"))$("#lgPrev").src=l.data}catch(e){}}
 
@@ -1849,7 +1871,7 @@ function nachCalc(t){
   const n=t.nach||{},p=preise(),satz=mwstSatzFirma();
   const erl=r2(t.rechnung?.kalk?.netto??t.kalk?.netto??((t.preisFinal??t.angebot??0)/(1+satz/100)));
   const lohn=r2((num(n.personen)||0)*(num(n.stunden)||0)*(p.lohn||20));
-  const bel=r2(list("belege").filter(b=>b.ticketId===t._id).reduce((s,b)=>s+((+b.brutto||0)-(+b.mwst||0)),0));
+  const bel=r2(aktiv("belege").filter(b=>b.ticketId===t._id).reduce((s,b)=>s+((+b.brutto||0)-(+b.mwst||0)),0));
   const sonst=r2(num(n.sonst)||0),kosten=r2(lohn+bel+sonst),db=r2(erl-kosten);
   const kiM3=t.kiVol?.m3||t.kalk?.m3||null,abw=n.m3&&kiM3?(kiM3-n.m3)/n.m3:null;
   return{erl,lohn,bel,sonst,kosten,db,marge:erl?db/erl:null,proStd:n.stunden&&n.personen?db/(n.personen*n.stunden):null,proM3:n.m3?erl/n.m3:null,m3:n.m3,kiM3,abw};
@@ -1917,6 +1939,252 @@ function nachtragDialog(id){
   <div class="row"><button class="btn pri" data-act="ntSign" data-id="${esc(id)}">Vor Ort unterschreiben lassen</button>${t.kunde?.tel?`<button class="btn" data-act="ntWa" data-id="${esc(id)}">Per WhatsApp anfragen</button>`:""}</div>`);
 }
 
+
+/* ===================== NEU 3: Recht DE/NL – Widerruf, Festschreibung, Entsorgung, Kassenbuch, NL, E-Rechnung, KI-Einweisung ===================== */
+const NL_ORTE=/\b(Enschede|Hengelo|Oldenzaal|Almelo|Denekamp|Losser|Emmen|Coevorden|Hardenberg|Ootmarsum|Tubbergen|Dinkelland|Borne|Haaksbergen|Rijssen|Holten|Nijverdal|Ommen|Dalfsen|Zwolle|Deventer|Hoogeveen|Assen|Meppel|Klazienaveen|Ter Apel|Winterswijk|Oldenzaal|Weerselo|Glanerbrug|Vriezenveen)\b/i;
+const nlPlz=s=>/\b\d{4}\s?[A-Z]{2}\b/.test(String(s||""));
+const istNL=t=>t?.land?t.land==="NL":(nlPlz(t?.kunde?.adresse)||NL_ORTE.test(`${t?.kunde?.ort||""} ${t?.kunde?.adresse||""}`));
+const istPrivat=t=>t?.kundeTyp!=="firma";
+const docLang=t=>t?.sprache||(istNL(t)?"nl":"de");
+const reverseCharge=t=>istNL(t)&&!istPrivat(t)&&!!t?.kunde?.ustid;
+const recht=()=>window.WN_RECHT;
+function firmaRecht(){const f=st.firma;return{...f,name:f.name||"WN Entrümpelung"}}
+
+/* Dokument-Texte Deutsch / Niederländisch */
+const DOK={
+ de:{angebotFP:"Festpreis-Angebot",angebotKV:"Kostenvoranschlag",rechnung:"Rechnung",datum:"Datum",leistung:"Leistung",netto:"Betrag netto",summeN:"Summe netto",mwst:p=>`zzgl. ${p} % MwSt`,ust0:"Umsatzsteuer",summeB:"Summe brutto",wert:"abzgl. Wertanrechnung",zahl:"Zu zahlen",arbeit:"Arbeitskosten",fahrt:"Fahrtkosten",entsorgung:"Entsorgung",material:"Material",
+   danke:(was,adr)=>`Vielen Dank für Ihre Anfrage. Für ${was}${adr?` (${adr})`:""} bieten wir Ihnen an:`,vol:(m,f,p,tm)=>`Geschätztes Volumen: ca. ${m} m³ · ${f} Transporter-Ladung${f>1?"en":""} · ${p} Personen${tm?` · Wunschtermin ${tm}`:""}`,
+   enthalten:"Im Preis enthalten: Demontage, Tragen, Abtransport und fachgerechte Entsorgung, besenreine Übergabe.",gilt:(a,bis,tel)=>`Dieses ${a} gilt 14 Tage bis ${bis}. Zur Beauftragung genügt eine kurze Nachricht per WhatsApp${tel?` an ${tel}`:""} oder Ihre Unterschrift vor Ort.`,
+   leistungZ:(was,adr,ld,nr)=>`Leistung: ${was}${adr?`, Ort der Leistung: ${adr}`:""} · Leistungsdatum: ${ld} · Auftrag #${nr}`,ueberweisen:(b,bis,iban,bank,nr)=>`Bitte überweisen Sie ${b} bis zum ${bis}${iban?` auf das Konto IBAN ${iban}${bank?` (${bank})`:""}`:""}, Verwendungszweck ${nr}.`,bezahlt:(d,z)=>`Bezahlt am ${d} (${z}). Vielen Dank!`,
+   rc:(u)=>`Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge). USt-IdNr. Leistungsempfänger: ${u}`,ku:"Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.",kunde:"Kunde",ustid:"USt-IdNr.",aufteilung:"Aufteilung für Ihre Steuer / Ihren Steuerberater",brutto:"brutto"},
+ nl:{angebotFP:"Offerte (vaste prijs)",angebotKV:"Kostenraming (vrijblijvend)",rechnung:"Factuur",datum:"Datum",leistung:"Omschrijving",netto:"Bedrag excl. btw",summeN:"Totaal excl. btw",mwst:p=>`${p} % btw (Duitse btw)`,ust0:"Btw",summeB:"Totaal incl. btw",wert:"Af: verrekening waarde inboedel",zahl:"Te betalen",arbeit:"Arbeidskosten",fahrt:"Reiskosten",entsorgung:"Afvalverwerking",material:"Materiaal",
+   danke:(was,adr)=>`Hartelijk dank voor uw aanvraag. Voor ${was}${adr?` (${adr})`:""} bieden wij u aan:`,vol:(m,f,p,tm)=>`Geschat volume: ca. ${m} m³ · ${f} bestelbus${f>1?"ladingen":"lading"} · ${p} personen${tm?` · gewenste datum ${tm}`:""}`,
+   enthalten:"Inbegrepen: demontage, sjouwen, afvoer en verantwoorde afvalverwerking, bezemschoon opleveren.",gilt:(a,bis,tel)=>`Deze ${a.toLowerCase()} is 14 dagen geldig, tot ${bis}. Opdracht geven kan met een kort bericht via WhatsApp${tel?` naar ${tel}`:""} of met uw handtekening ter plaatse.`,
+   leistungZ:(was,adr,ld,nr)=>`Dienst: ${was}${adr?`, plaats van uitvoering: ${adr}`:""} · datum uitvoering: ${ld} · opdracht #${nr}`,ueberweisen:(b,bis,iban,bank,nr)=>`Gelieve ${b} vóór ${bis} over te maken${iban?` naar IBAN ${iban}${bank?` (${bank})`:""}`:""} onder vermelding van ${nr}.`,bezahlt:(d,z)=>`Betaald op ${d} (${z}). Hartelijk dank!`,
+   rc:(u)=>`Btw verlegd (Steuerschuldnerschaft des Leistungsempfängers). Btw-nummer afnemer: ${u}`,ku:"Kleineondernemer volgens § 19 UStG (Duitsland): geen btw in rekening gebracht.",kunde:"Klant",ustid:"Btw-nummer",aufteilung:"Specificatie",brutto:"incl. btw"}
+};
+const SONDER_NL={"Matratze":"Matras","Altreifen":"Autoband","Kühlgerät":"Koelapparaat","Elektrogerät":"Elektrisch apparaat","Farben/Lacke":"Verf/lak","Bauschutt (je m³)":"Bouwpuin (per m³)","Sonstiges":"Overig"};
+const LEIST_NL={"Entrümpelung":"Ontruiming","Haushaltsauflösung":"Woningontruiming (inboedel)","Büroauflösung":"Kantoorontruiming","Wohnungsräumung":"Woningontruiming","Keller/Dachboden":"Kelder/zolder","Entsorgung":"Afvalafvoer","Transport":"Transport","Umzug":"Verhuizing","Sperrmüll-Abholung":"Grofvuil ophalen","Gartenarbeit":"Tuinwerk","Reinigung":"Schoonmaak","Sonstiges":"Overig"};
+function posTxt(x,nl){if(!nl)return x;let m;
+  if(m=x.match(/^Räumung, Demontage und Tragen: (\d+) Personen × ([\d,.]+) Std\.$/))return `Ontruimen, demonteren en sjouwen: ${m[1]} personen × ${m[2]} uur`;
+  if(m=x.match(/^Etagenzuschlag ohne Aufzug: (\d+) Etage/))return `Toeslag trappen zonder lift: ${m[1]} verdieping${m[1]>1?"en":""}`;
+  if(x==="Anfahrt und Transporter")return "Voorrijkosten en bestelbus";
+  if(m=x.match(/^Weitere Fahrten zur Entsorgung: (\d+)$/))return `Extra ritten naar de afvalverwerker: ${m[1]}`;
+  if(m=x.match(/^Entsorgung Sperrmüll\/Mischabfall: ca\. (.+) m³$/))return `Afvoer grofvuil/gemengd afval: ca. ${m[1]} m³`;
+  if(m=x.match(/^Sonderentsorgung (.+): ([\d,.]+) ×$/))return `Apart afvoeren ${SONDER_NL[m[1]]||m[1]}: ${m[2]} ×`;
+  if(x==="Material (Säcke, Folie, Kartons)")return "Materiaal (zakken, folie, dozen)";
+  if(m=x.match(/^Nachtrag: (.+) \(vom Kunden bestätigt\)$/))return `Meerwerk: ${m[1]} (door klant bevestigd)`;
+  return x}
+const wasTxt=(t,nl)=>[nl?(LEIST_NL[t.leistung]||t.leistung):t.leistung,t.titel].filter(Boolean).join(" – ");
+const KLAUSEL_NL={festpreis:m=>`Vaste prijs voor de bezichtigde of op uw foto's getoonde omvang (ca. ${m} m³). Extra ruimtes of spullen die niet bezichtigd of getoond zijn, en niet zichtbaar gevaarlijk afval, zijn niet inbegrepen. Zulk meerwerk voeren wij alleen uit na overleg en met uw toestemming.`,kva:m=>`Dit is een vrijblijvende kostenraming op basis van ca. ${m} m³. Wij rekenen de werkelijke inspanning af tegen de genoemde tarieven. Als blijkt dat het bedrag duidelijk hoger wordt, informeren wij u vooraf.`};
+
+/* ---------- Widerruf ---------- */
+function wrExHtml(t){const W=recht()?.widerruf(docLang(t),firmaRecht());if(!W||!istPrivat(t))return"";
+  return `<div id="sg_wr" class="card" style="background:var(--s2);display:none"><h3>${docLang(t)==="nl"?"Herroepingsrecht (NL)":"Widerrufsrecht"}</h3>
+  <p class="small" style="margin:6px 0 8px">Privatkunde, Vertrag vor Ort oder per WhatsApp/Telefon: 14 Tage Widerrufsrecht. Belehrung + Formular <b>auf Papier</b> übergeben (oder als PDF, wenn der Kunde zustimmt).</p>
+  <button class="btn sm" data-act="wrPdf" data-id="${esc(t._id)}">Widerrufsbelehrung als PDF (${docLang(t).toUpperCase()})</button>
+  <div class="fields" style="margin-top:10px"><div class="field full"><label>Belehrung übergeben</label><select id="wr_weg"><option>Auf Papier übergeben</option><option>Als PDF per WhatsApp/E-Mail (Kunde stimmt zu)</option></select></div>
+  <label class="field full" style="flex-direction:row;gap:10px;align-items:flex-start"><input type="checkbox" id="wr_erh" style="width:20px;height:20px;flex:none"> ${esc(W.erhalten)}</label>
+  <label class="field full" style="flex-direction:row;gap:10px;align-items:flex-start"><input type="checkbox" id="wr_vz" style="width:20px;height:20px;flex:none"> ${esc(W.vorzeitig)}</label></div></div>`}
+function wrEx(){if(!$("#sg_wr"))return null;return{erhalten:!!$("#wr_erh")?.checked,vorzeitig:!!$("#wr_vz")?.checked,weg:$("#wr_weg")?.value||""}}
+function wrZusatz(t,x){const W=recht()?.widerruf(docLang(t),firmaRecht());if(!W||!x)return"";return (x.erhalten?" "+W.erhalten+(x.weg?` (${x.weg})`:""):"")+(x.vorzeitig?" "+W.vorzeitig:"")}
+async function wrNachUnterschrift(id,x){const v={vertrag:today(),bis:addDays(today(),14),vorzeitig:!!x?.vorzeitig,erhalten:!!x?.erhalten,weg:x?.weg||"",t:nowIso()};await upd("tickets",id,{widerruf:v})}
+function wrCard(id,t){
+  if(!istPrivat(t))return"";const w=t.widerruf,lauf=w&&today()<=w.bis;
+  return `<div class="card" style="background:var(--s2)"><div class="spread"><h3>${docLang(t)==="nl"?"Herroepingsrecht":"Widerrufsrecht"} · Privatkunde${istNL(t)?" (NL)":""}</h3>${w?`<span class="pill ${lauf?"":"akt"}">${lauf?`läuft bis ${esc(fD(w.bis))}`:"abgelaufen"}</span>`:`<span class="pill" style="color:#f59e0b">nicht dokumentiert</span>`}</div>
+  ${w?`<div class="small" style="margin-top:6px">Vertrag ${esc(fD(w.vertrag))} · Belehrung ${w.erhalten?`übergeben (${esc(w.weg)})`:"<b style='color:#f59e0b'>nicht bestätigt</b>"} · ${w.vorzeitig?"vorzeitiger Beginn verlangt ✓":(lauf?"<b style='color:#f59e0b'>Beginn erst nach Fristende oder mit Zustimmung</b>":"")}</div>`:`<div class="small" style="margin-top:6px">Lassen Sie den Kunden den <b>Auftrag unterschreiben</b> – dabei werden Widerrufsbelehrung und vorzeitiger Beginn bestätigt.</div>`}
+  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="wrPdf" data-id="${esc(id)}">Widerrufsbelehrung-PDF</button></div></div>`;
+}
+async function pdfWiderruf(d,t,y,newPage){
+  const W=recht()?.widerruf(docLang(t),firmaRecht());if(!W)return y;const M=16,CW=210-2*M;
+  if(newPage){d.addPage();y=20}
+  const P=(s,size=9.5,b)=>{d.setFont("helvetica",b?"bold":"normal");d.setFontSize(size);for(const l of d.splitTextToSize(s,CW)){if(y>PDF_END){d.addPage();y=20}d.text(l,M,y);y+=size*.42+.7}d.setFont("helvetica","normal")};
+  P(W.titel,13,true);y+=2;for(const a of W.abschnitte){P(a.h,10.5,true);a.p.forEach(p=>{P(p);y+=1.2});y+=1.5}
+  y+=3;d.setDrawColor(150);d.setLineDashPattern([1,1],0);d.line(M,y,210-M,y);d.setLineDashPattern([],0);y+=6;
+  P(W.formularTitel,12,true);y+=1;W.formular.forEach(p=>{P(p,9.5);y+=2.2});return y;
+}
+async function widerrufPdf(id){
+  const t=st.data.tickets[id];if(!t)return;toast("PDF wird erstellt …");await loadJsPdf();const {jsPDF}=window.jspdf,d=new jsPDF({unit:"mm",format:"a4"});
+  let y=await pdfHead(d,docLang(t)==="nl"?"Informatie herroepingsrecht":"Widerrufsbelehrung",`#${t.nr}`);y=kundeBlock(d,t,y);
+  await pdfWiderruf(d,t,y,false);pdfFoot(d,docLang(t)==="nl"?"Herroepingsrecht":"Widerrufsbelehrung");
+  if(await savePdf(d,`${docLang(t)==="nl"?"Herroepingsrecht":"Widerrufsbelehrung"}_${t.nr}.pdf`))await logT(id,"Widerrufsbelehrung-PDF erstellt");
+}
+/* Prüfungen vor Arbeitsbeginn */
+function startWarnungen(t){
+  const w=[];
+  if(istPrivat(t)){if(!t.widerruf)w.push("Keine Widerrufsbelehrung/Auftrag dokumentiert.");else if(!t.widerruf.vorzeitig&&today()<=t.widerruf.bis)w.push(`Widerrufsfrist läuft bis ${fD(t.widerruf.bis)} und der Kunde hat keinen vorzeitigen Beginn verlangt.`)}
+  if(istNL(t)){if(!t.nlCheck?.wagweu)w.push("NL: Mitarbeiter noch nicht bei postedworkers.nl gemeldet.");if(!st.firma.vihb)w.push("NL: VIHB-Nummer fehlt (Abfalltransport in NL).")}
+  if(!st.firma.anzeige53)w.push("Anzeige nach § 53 KrWG (Abfallbeförderung) ist nicht eingetragen.");
+  return w;
+}
+
+/* ---------- NL-Checkliste ---------- */
+function nlCard(id,t){if(!istNL(t))return"";const c=t.nlCheck||{};
+  return `<div class="card" style="background:var(--s2);border-color:#f59e0b"><h3>🇳🇱 Auftrag in den Niederlanden</h3>
+  <label style="display:flex;gap:10px;align-items:flex-start;margin-top:8px"><input type="checkbox" data-act="nlChk" data-id="${esc(id)}" data-k="wagweu" ${c.wagweu?"checked":""} style="width:20px;height:20px;flex:none"> <span>Mitarbeiter vorher bei <a href="https://www.postedworkers.nl" target="_blank" rel="noopener" style="color:var(--accL)">postedworkers.nl</a> gemeldet (WagwEU)</span></label>
+  <label style="display:flex;gap:10px;align-items:flex-start;margin-top:8px"><input type="checkbox" data-act="nlChk" data-id="${esc(id)}" data-k="entsorgungNL" ${c.entsorgungNL?"checked":""} style="width:20px;height:20px;flex:none"> <span>Abfall wird in NL entsorgt (mit Begleitschein). Gemischten Abfall <b>nicht</b> ohne Notifizierung nach Deutschland bringen.</span></label>
+  <div class="small" style="margin-top:8px">VIHB-Nummer: ${st.firma.vihb?esc(st.firma.vihb):"<b style='color:#f59e0b'>fehlt – bei NIWO beantragen</b>"} · Dokumente gehen auf Niederländisch raus${istPrivat(t)?" · Mahnungen nach WIK (14-Tage-Brief)":""}${reverseCharge(t)?" · Rechnung: btw verlegd":""}</div></div>`}
+
+/* ---------- Entsorgung & Nachweis ---------- */
+const ABFALLART=["Sperrmüll / Mischabfall","Holz","Metall / Schrott","Elektroaltgeräte","Kühlgeräte","Papier / Pappe","Bauschutt","Sondermüll (Farben, Öl …)","Textilien","Grünschnitt","Sonstiges"];
+const ELEKTRO=/kühl|gefrier|fernseh|tv\b|waschmasch|trockner|spülmasch|elektro|computer|monitor|drucker|herd|backofen|mikrowelle|lampe|staubsauger|kaffeemasch/i;
+function abfallHinweise(t){const h=[],v=t.kiVol||{},sonder=[...(v.sonder||[]),...(t.kalk?.sonder||[])].map(s=>s.art);
+  if((v.gegenstaende||[]).some(g=>ELEKTRO.test(g))||sonder.some(a=>/Kühl|Elektro/.test(a)))h.push("Elektroaltgeräte erkannt: getrennt halten und zum Wertstoffhof/Rücknahmestelle – nicht in Sperr- oder Mischabfall.");
+  if(sonder.some(a=>/Farben|Lacke|Sonder/.test(a))&&!st.firma.erlaubnis54)h.push("Gefährliche Abfälle (Farben, Lacke, Öl …): Ohne Erlaubnis nach § 54 KrWG nicht selbst transportieren – Kunde zum Schadstoffmobil schicken oder Fachbetrieb beauftragen.");
+  return h}
+function entsCard(id,t){const e=t.entsorgung||[],h=abfallHinweise(t);
+  return `<div class="card" style="background:var(--s2)"><div class="spread"><h3>Entsorgung & Nachweis (${e.length})</h3><button class="btn sm pri" data-act="entsNeu" data-id="${esc(id)}">Wiegeschein / Entsorgung erfassen</button></div>
+  ${h.map(x=>`<div class="note" style="margin-top:8px">${esc(x)}</div>`).join("")}
+  ${e.length?`<div class="list" style="margin-top:8px">${e.map(x=>`<div class="item" style="cursor:default;padding:10px"><div class="head"><b>${esc(x.art)}</b><span>${esc(x.menge||"")} ${esc(x.einheit||"")}</span></div><div class="meta">${esc(fD(x.datum))} · ${esc(x.anlage||"")} (${esc(x.land||"DE")})${x.kosten?` · ${eur(x.kosten)}`:""}${x.fotoId?` · <a href="${esc(blob(x.fotoId))}" target="_blank" rel="noopener" style="color:var(--accL)">Wiegeschein</a>`:""}</div></div>`).join("")}</div>`:`<div class="small" style="margin-top:6px">Nach jeder Fahrt Wiegeschein fotografieren – das ist Ihr Nachweis für fachgerechte Entsorgung.</div>`}</div>`}
+async function entsNeu(id){
+  const t=st.data.tickets[id];const f=await pickImage();
+  openSheet(`<div class="spread"><h2>Entsorgung erfassen · #${esc(t.nr)}</h2><button class="btn sm" data-act="openTicket" data-id="${esc(id)}">Zurück</button></div>
+  ${f?`<img class="prev" id="ep" alt="Wiegeschein"><div id="eKi" class="ai"><span class="spin"></span>KI liest den Wiegeschein …</div>`:""}
+  <div class="fields"><div class="field"><label>Datum</label><input id="e_d" type="date" value="${today()}"></div>
+  <div class="field"><label>Anlage / Wertstoffhof</label><input id="e_a" placeholder="z. B. Wertstoffhof Nordhorn"></div>
+  <div class="field"><label>Land</label><select id="e_l"><option${istNL(t)?"":" selected"}>DE</option><option${istNL(t)?" selected":""}>NL</option></select></div>
+  <div class="field"><label>Abfallart</label><select id="e_t">${ABFALLART.map(a=>`<option>${a}</option>`).join("")}</select></div>
+  <div class="field"><label>Menge</label><input id="e_m" type="number" step="0.01"></div>
+  <div class="field"><label>Einheit</label><select id="e_u"><option>t</option><option>kg</option><option>m³</option><option>Stück</option></select></div>
+  <div class="field"><label>Kosten € brutto (falls bezahlt)</label><input id="e_k" type="number" step="0.01"></div>
+  <label class="field" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" id="e_b" checked style="width:20px;height:20px"> Kosten auch als Beleg buchen</label></div>
+  <div id="eWarn"></div><button class="btn pri big" id="eGo">Speichern</button>`);
+  const warn=()=>{const nl=istNL(t),l=$("#e_l").value,art=$("#e_t").value;$("#eWarn").innerHTML=nl&&l==="DE"&&!/Metall|Elektro|Kühl|Papier|Textil/.test(art)?`<div class="note" style="border-color:#f59e0b">Abfall aus einem NL-Auftrag in Deutschland entsorgen ist eine grenzüberschreitende Abfallverbringung und braucht in der Regel eine Notifizierung. Besser in NL entsorgen.</div>`:/Sonder/.test(art)&&!st.firma.erlaubnis54?`<div class="note" style="border-color:#f59e0b">Sondermüll: Erlaubnis nach § 54 KrWG nötig.</div>`:""};
+  $("#e_l").onchange=warn;$("#e_t").onchange=warn;warn();
+  let small=null;
+  if(f){small=await shrink(f,1400);$("#ep").src=URL.createObjectURL(small);
+    (async()=>{try{if(!st.sample)throw new Error("KI nur in der Claude-Version");const r=await ki(`Lies diesen Wiegeschein / Annahmeschein einer Entsorgungsanlage (DE oder NL). Antworte NUR mit JSON: {"datum":"YYYY-MM-DD","anlage":"Name der Anlage","land":"DE|NL","abfallart":"eins aus ${ABFALLART.join("|")}","menge":0,"einheit":"t|kg|m³|Stück","kosten_brutto":0}`,[small]);
+      if(r){if(r.datum)$("#e_d").value=r.datum;if(r.anlage)$("#e_a").value=r.anlage;if(r.land)$("#e_l").value=r.land==="NL"?"NL":"DE";if(ABFALLART.includes(r.abfallart))$("#e_t").value=r.abfallart;if(r.menge!=null)$("#e_m").value=r.menge;if(r.einheit)$("#e_u").value=r.einheit;if(r.kosten_brutto)$("#e_k").value=r.kosten_brutto;warn();$("#eKi").innerHTML="✓ Von der KI ausgefüllt – bitte prüfen."}}
+    catch(e){$("#eKi").innerHTML=`Bitte von Hand ausfüllen (${esc(e.message||"KI nicht verfügbar")}).`}})()}
+  $("#eGo").onclick=async()=>{const b=$("#eGo");b.disabled=true;b.textContent="Wird gespeichert …";
+    try{const x={datum:$("#e_d").value,anlage:$("#e_a").value.trim(),land:$("#e_l").value,art:$("#e_t").value,menge:num($("#e_m").value),einheit:$("#e_u").value,kosten:num($("#e_k").value),t:nowIso(),von:st.me};
+      if(small)x.fotoId=await upload(small);
+      if(x.kosten&&$("#e_b").checked){if(istFest(x.datum)){toast("Monat ist festgeschrieben – Beleg bitte im aktuellen Monat erfassen")}else await save("belege",null,{datum:x.datum,haendler:x.anlage,brutto:x.kosten,mwstSatz:x.land==="NL"?21:19,mwst:mwstOf(x.kosten,x.land==="NL"?21:19),kategorie:"Entsorgung/Deponie",zahlart:"Firmenkarte",ticketId:id,notiz:`${x.art} ${x.menge||""} ${x.einheit}`.trim(),bildId:x.fotoId||"",von:st.me,erstellt:nowIso()})}
+      const tt=st.data.tickets[id];await logT(id,`Entsorgung: ${x.art} ${x.menge||""} ${x.einheit} bei ${x.anlage||"?"} (${x.land})`,{entsorgung:[...(tt.entsorgung||[]),x]});toast("Gespeichert");openTicket(id)}
+    catch(e){toast(e.message||"Fehler");b.disabled=false;b.textContent="Speichern"}};
+}
+
+/* ---------- GoBD: Festschreibung, Storno, Änderungsprotokoll ---------- */
+const istFest=d=>!!st.firma.festBis&&String(d||"").slice(0,7)<=st.firma.festBis;
+const aktiv=c=>list(c).filter(x=>!x.storniert);
+function festCard(){const fb=st.firma.festBis,vm=(()=>{const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7)})();
+  return `<div class="card"><h3>Monat festschreiben (GoBD)</h3><p class="small" style="margin:6px 0 10px">Nach der Umsatzsteuer-Meldung den Monat festschreiben. Danach können Belege und Einnahmen dieses Zeitraums nicht mehr geändert werden – Fehler werden storniert und neu erfasst. ${fb?`Festgeschrieben bis einschließlich <b>${esc(MONATE[Number(fb.slice(5))-1])} ${esc(fb.slice(0,4))}</b>.`:"Noch nichts festgeschrieben."}</p>
+  <div class="row"><input id="fs_m" type="month" value="${esc(fb&&fb>vm?fb:vm)}" max="${esc(vm)}" class="rolesw"><button class="btn" data-act="festGo">Bis einschließlich festschreiben</button></div></div>`}
+async function festGo(){const m=$("#fs_m").value;if(!m){toast("Bitte Monat wählen");return}if(st.firma.festBis&&m<=st.firma.festBis){toast("Dieser Zeitraum ist bereits festgeschrieben");return}
+  if(!festGo.sure){festGo.sure=true;toast(`Wirklich bis ${m} festschreiben? Das lässt sich nicht rückgängig machen. Nochmal tippen.`);return}festGo.sure=false;
+  await st.db.doc("einstellungen/firma").set({...st.firma,festBis:m,festAm:nowIso(),festVon:st.me});toast("Festgeschrieben")}
+async function belegStorno(id){const b=st.data.belege[id];if(!b)return;const g=$("#st_g")?.value.trim();if(!g){toast("Bitte Grund für die Stornierung eintragen");return}
+  await upd("belege",id,{storniert:{t:nowIso(),von:st.me,grund:g},historie:[...(b.historie||[]),{t:nowIso(),von:st.me,aktion:"storniert",grund:g}]});toast("Beleg storniert");closeSheet()}
+function belegHistorie(b){return (b.historie||[]).length?`<details style="margin-top:6px"><summary class="small">Änderungsprotokoll (${b.historie.length})</summary><div class="vl">${b.historie.slice().reverse().map(h=>`<div>${esc(h.aktion||"geändert")}${h.grund?": "+esc(h.grund):""}${h.felder?` (${esc(h.felder.join(", "))})`:""}<small>${esc(fDT(h.t))} · ${esc(nameOf(h.von))}</small></div>`).join("")}</div></details>`:""}
+
+/* ---------- Kassenbuch (Bar) ---------- */
+function kasseDoc(){return st.kasse||{}}
+function kasseZeilen(y){
+  const k=kasseDoc(),z=[];
+  aktiv("einnahmen").filter(e=>e.zahlart==="Bar"&&String(e.datum).startsWith(y)).forEach(e=>z.push({datum:e.datum,text:e.beschreibung||"Einnahme",ein:+e.brutto||0,aus:0,beleg:e.rechnungNr||""}));
+  aktiv("belege").filter(b=>b.zahlart==="Bar"&&String(b.datum).startsWith(y)).forEach(b=>z.push({datum:b.datum,text:[b.haendler,b.notiz].filter(Boolean).join(" – ")||"Ausgabe",ein:0,aus:(+b.brutto||0)+(+b.privat||0),beleg:"Beleg"}));
+  (k.bewegungen||[]).filter(m=>String(m.datum).startsWith(y)).forEach(m=>z.push({datum:m.datum,text:m.text,ein:m.art==="ein"?+m.betrag:0,aus:m.art==="aus"?+m.betrag:0,beleg:m.art==="ein"?"Einlage/Bank":"Entnahme/Bank"}));
+  z.sort((a,b)=>String(a.datum).localeCompare(b.datum));let s=+(k.start?.[y]||0);z.forEach(x=>{s=r2(s+x.ein-x.aus);x.saldo=s});return{start:+(k.start?.[y]||0),zeilen:z,ende:s};
+}
+function kasseCard(){const y=st.year,K=kasseZeilen(y),neg=K.zeilen.some(z=>z.saldo<0),zl=(kasseDoc().zaehlungen||[]).filter(z=>String(z.datum).startsWith(y)).slice(-1)[0];
+  return `<div class="card tw"><div class="spread"><h3>Kassenbuch (Bargeld) ${esc(y)}</h3><span class="small">Bestand ${eur(K.ende)}</span></div>
+  <p class="small" style="margin:6px 0 8px">Jede Bareinnahme und -ausgabe einzeln, täglich. Bareinnahmen kommen aus „Bezahlt (Bar)“, Barausgaben aus Belegen mit „Bar“. Die App ist ein Kassenbuch, keine Registrierkasse.</p>
+  ${neg?`<div class="note" style="border-color:#ff8a8a">Achtung: Der Kassenbestand wird zwischendurch negativ – das ist bei einer Prüfung ein Fehler. Fehlt eine Einlage oder ein Anfangsbestand?</div>`:""}
+  ${zl?`<div class="small">Letzte Zählung ${esc(fD(zl.datum))}: ${eur(zl.ist)} (Differenz ${eur(r2(zl.ist-zl.soll))})</div>`:""}
+  <table style="margin-top:6px"><tr><th>Datum</th><th>Text</th><th class="n">Ein</th><th class="n">Aus</th><th class="n">Bestand</th></tr><tr><td></td><td>Anfangsbestand</td><td></td><td></td><td class="n">${eur(K.start)}</td></tr>
+  ${K.zeilen.slice(-30).map(z=>`<tr><td>${esc(fD(z.datum))}</td><td>${esc(z.text.slice(0,34))}</td><td class="n">${z.ein?eur(z.ein):""}</td><td class="n">${z.aus?eur(z.aus):""}</td><td class="n" style="${z.saldo<0?"color:#ff8a8a":""}">${eur(z.saldo)}</td></tr>`).join("")}</table>
+  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="kaStart">Anfangsbestand</button><button class="btn sm" data-act="kaBew">Einlage / Entnahme / Bank</button><button class="btn sm" data-act="kaZahl">Kasse zählen</button><button class="btn sm" data-act="kaCsv">Kassenbuch CSV</button></div></div>`}
+function kaDialog(art){const y=st.year;
+  openSheet(`<div class="spread"><h2>${art==="start"?`Anfangsbestand ${esc(y)}`:art==="zahl"?"Kasse zählen":"Einlage / Entnahme / Bank"}</h2><button class="btn sm" data-act="close">Schließen</button></div>
+  <div class="fields">${art==="start"?`<div class="field"><label>Bestand am 1.1.${esc(y)} €</label><input id="ka_b" type="number" step="0.01" value="${esc(kasseDoc().start?.[y]??"")}"></div>`:
+   art==="zahl"?`<div class="field"><label>Datum</label><input id="ka_d" type="date" value="${today()}"></div><div class="field"><label>Gezählt € (Ist)</label><input id="ka_b" type="number" step="0.01"></div><div class="field full small">Laut Kassenbuch (Soll): ${eur(kasseZeilen(y).ende)}</div>`:
+   `<div class="field"><label>Datum</label><input id="ka_d" type="date" value="${today()}"></div><div class="field"><label>Art</label><select id="ka_a"><option value="ein">Einlage in die Kasse (privat / von Bank)</option><option value="aus">Entnahme aus der Kasse (privat / zur Bank)</option></select></div><div class="field"><label>Betrag €</label><input id="ka_b" type="number" step="0.01"></div><div class="field"><label>Text</label><input id="ka_t" placeholder="z. B. Einzahlung Sparkasse"></div>`}</div>
+  <button class="btn pri big" data-act="kaSave" data-v="${art}">Speichern</button>`)}
+async function kaSave(art){const y=st.year,k={...kasseDoc()},b=num($("#ka_b").value);if(b==null){toast("Bitte Betrag");return}
+  if(art==="start")k.start={...(k.start||{}),[y]:b};
+  else if(art==="zahl")k.zaehlungen=[...(k.zaehlungen||[]),{datum:$("#ka_d").value,ist:b,soll:kasseZeilen(y).ende,t:nowIso(),von:st.me}];
+  else{const d=$("#ka_d").value;if(istFest(d)){toast("Monat ist festgeschrieben");return}k.bewegungen=[...(k.bewegungen||[]),{datum:d,art:$("#ka_a").value,betrag:b,text:$("#ka_t").value.trim()||($("#ka_a").value==="ein"?"Einlage":"Entnahme"),t:nowIso(),von:st.me}]}
+  await st.db.doc("einstellungen/kasse").set(k);toast("Gespeichert");closeSheet()}
+async function kaCsv(){const y=st.year,K=kasseZeilen(y),q=s=>`"${String(s??"").replace(/"/g,'""')}"`,n=v=>(Number(v)||0).toFixed(2).replace(".",",");
+  const rows=[["Datum","Text","Beleg","Einnahme","Ausgabe","Bestand"],["01.01."+y,"Anfangsbestand","","","",n(K.start)],...K.zeilen.map(z=>[fD(z.datum),z.text,z.beleg,z.ein?n(z.ein):"",z.aus?n(z.aus):"",n(z.saldo)])];
+  const txt="﻿"+rows.map(r=>r.map(q).join(";")).join("\r\n"),name=`WN_Kassenbuch_${y}.csv`;
+  try{if(st.dl)await st.dl.save({filename:name,data:new Blob([txt],{type:"text/csv;charset=utf-8"})});else{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"text/csv"}));a.download=name;document.body.appendChild(a);a.click();a.remove()}}catch(e){toast("Download abgebrochen")}}
+
+/* ---------- WIK-Incassokosten (NL-Verbraucher) ---------- */
+function wikKosten(b){b=+b||0;const st_=[[2500,.15],[2500,.10],[5000,.05],[190000,.01],[Infinity,.005]];let rest=b,k=0;for(const [g,p] of st_){const x=Math.min(rest,g);k+=x*p;rest-=x;if(rest<=0)break}return r2(Math.min(6775,Math.max(40,k)))}
+
+/* ---------- E-Rechnung (XRechnung, UBL) – Vorbereitung für Firmenkunden ---------- */
+function xmlEsc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c]))}
+async function eRechnung(id){
+  const t=st.data.tickets[id],re=t?.rechnung;if(!re){toast("Bitte zuerst die Rechnung erstellen");return}if(istPrivat(t)){toast("E-Rechnung ist nur für Firmenkunden nötig");return}
+  const f=st.firma,k=re.kalk,rc=reverseCharge(t),satz=rc?0:k.mwstSatz,cat=rc?"AE":(st.firma.kleinunternehmer?"E":"S"),A=n=>(Number(n)||0).toFixed(2),due=addDays(re.datum,zahlZiel());
+  const lines=k.pos.map((p,i)=>`<cac:InvoiceLine><cbc:ID>${i+1}</cbc:ID><cbc:InvoicedQuantity unitCode="C62">1</cbc:InvoicedQuantity><cbc:LineExtensionAmount currencyID="EUR">${A(p.betrag)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${xmlEsc(p.text)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${A(satz)}</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="EUR">${A(p.betrag)}</cbc:PriceAmount></cac:Price></cac:InvoiceLine>`).join("");
+  const kn=t.kunde||{};
+  const xml=`<?xml version="1.0" encoding="UTF-8"?>
+<ubl:Invoice xmlns:ubl="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</cbc:CustomizationID>
+<cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
+<cbc:ID>${xmlEsc(re.nr)}</cbc:ID><cbc:IssueDate>${re.datum}</cbc:IssueDate><cbc:DueDate>${due}</cbc:DueDate><cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>${rc?`<cbc:Note>Steuerschuldnerschaft des Leistungsempfängers / BTW verlegd</cbc:Note>`:""}<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode><cbc:BuyerReference>${xmlEsc(t.leitwegId||("#"+t.nr))}</cbc:BuyerReference>
+<cac:InvoicePeriod><cbc:StartDate>${re.leistung}</cbc:StartDate><cbc:EndDate>${re.leistung}</cbc:EndDate></cac:InvoicePeriod>
+<cac:AccountingSupplierParty><cac:Party><cbc:EndpointID schemeID="EM">${xmlEsc(f.email||"rechnung@example.org")}</cbc:EndpointID><cac:PostalAddress><cbc:StreetName>${xmlEsc(f.strasse)}</cbc:StreetName><cbc:CityName>${xmlEsc(f.ort)}</cbc:CityName><cbc:PostalZone>${xmlEsc(f.plz)}</cbc:PostalZone><cac:Country><cbc:IdentificationCode>DE</cbc:IdentificationCode></cac:Country></cac:PostalAddress>${f.ustid?`<cac:PartyTaxScheme><cbc:CompanyID>${xmlEsc(f.ustid)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>`:""}${f.steuernr?`<cac:PartyTaxScheme><cbc:CompanyID>${xmlEsc(f.steuernr)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>FC</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>`:""}<cac:PartyLegalEntity><cbc:RegistrationName>${xmlEsc(f.name||"WN Entrümpelung")}</cbc:RegistrationName></cac:PartyLegalEntity><cac:Contact><cbc:Name>${xmlEsc(f.inhaber||f.name)}</cbc:Name><cbc:Telephone>${xmlEsc(f.tel)}</cbc:Telephone><cbc:ElectronicMail>${xmlEsc(f.email)}</cbc:ElectronicMail></cac:Contact></cac:Party></cac:AccountingSupplierParty>
+<cac:AccountingCustomerParty><cac:Party><cbc:EndpointID schemeID="EM">${xmlEsc(kn.email||"kunde@example.org")}</cbc:EndpointID><cac:PostalAddress><cbc:StreetName>${xmlEsc(kn.adresse)}</cbc:StreetName><cbc:CityName>${xmlEsc(kn.ort)}</cbc:CityName><cac:Country><cbc:IdentificationCode>${istNL(t)?"NL":"DE"}</cbc:IdentificationCode></cac:Country></cac:PostalAddress>${kn.ustid?`<cac:PartyTaxScheme><cbc:CompanyID>${xmlEsc(kn.ustid)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>`:""}<cac:PartyLegalEntity><cbc:RegistrationName>${xmlEsc(kn.name)}</cbc:RegistrationName></cac:PartyLegalEntity></cac:Party></cac:AccountingCustomerParty>
+<cac:PaymentMeans><cbc:PaymentMeansCode>58</cbc:PaymentMeansCode><cbc:PaymentID>${xmlEsc(re.nr)}</cbc:PaymentID><cac:PayeeFinancialAccount><cbc:ID>${xmlEsc(String(f.iban||"").replace(/\s/g,""))}</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>
+<cac:PaymentTerms><cbc:Note>Zahlbar bis ${fD(due)}</cbc:Note></cac:PaymentTerms>
+<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">${A(rc?0:k.mwst)}</cbc:TaxAmount><cac:TaxSubtotal><cbc:TaxableAmount currencyID="EUR">${A(k.netto)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="EUR">${A(rc?0:k.mwst)}</cbc:TaxAmount><cac:TaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${A(satz)}</cbc:Percent>${rc?`<cbc:TaxExemptionReason>Reverse charge</cbc:TaxExemptionReason>`:""}${cat==="E"?`<cbc:TaxExemptionReason>Kleinunternehmer gemäß § 19 UStG</cbc:TaxExemptionReason>`:""}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal></cac:TaxTotal>
+<cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="EUR">${A(k.netto)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="EUR">${A(k.netto)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="EUR">${A(rc?k.netto:k.brutto)}</cbc:TaxInclusiveAmount>${k.wert?`<cbc:PrepaidAmount currencyID="EUR">${A(k.wert)}</cbc:PrepaidAmount>`:""}<cbc:PayableAmount currencyID="EUR">${A((rc?k.netto:k.brutto)-(k.wert||0))}</cbc:PayableAmount></cac:LegalMonetaryTotal>
+${lines}
+</ubl:Invoice>`;
+  const name=`XRechnung_${re.nr}.xml`;try{if(st.dl)await st.dl.save({filename:name,data:new Blob([xml],{type:"application/xml"})});else{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([xml],{type:"application/xml"}));a.download=name;document.body.appendChild(a);a.click();a.remove()}}catch(e){toast("Download abgebrochen");return}
+  await logT(id,`E-Rechnung (XRechnung) ${re.nr} erstellt`);toast("E-Rechnung gespeichert – vor dem Versand einmal im Validator prüfen");
+}
+
+/* ---------- KI-Einweisung (KI-Verordnung Art. 4) ---------- */
+const KI_REGELN=["Die KI macht Vorschläge – Volumen, Belege und Texte prüft immer ein Mensch, bevor etwas an Kunden geht oder gebucht wird.","Keine Gesundheitsdaten, Ausweisnummern oder Bankdaten von Kunden in die KI eingeben.","Fotos nur von den zu räumenden Sachen machen – möglichst keine Personen, keine privaten Dokumente oder Fotos der Kunden.","KI-Schätzungen sind keine Festpreise. Bei Unsicherheit besichtigen.","Fehler der KI dem Chef melden, damit wir die Preise und Schätzungen verbessern."];
+function kiCard(){const me=st.me,p=st.data.profil?.[me]||{},ok=p.kiEinweisung;
+  return `<div class="card"><h3>KI richtig nutzen (Einweisung)</h3><ul class="small" style="margin:8px 0;padding-left:18px">${KI_REGELN.map(r=>`<li style="margin-bottom:4px">${esc(r)}</li>`).join("")}</ul>
+  ${ok?`<div class="small">✓ Gelesen am ${esc(fDT(ok))}</div>`:`<button class="btn pri" data-act="kiOk">Gelesen und verstanden</button>`}
+  ${isChef()?`<div class="small" style="margin-top:8px">Bestätigt: ${esc(teamList().filter(t=>st.data.profil?.[t._id]?.kiEinweisung).map(t=>t.name).join(", ")||"noch niemand")}</div>`:""}</div>`}
+
+/* ---------- Rechtliches in Team & Firma ---------- */
+function rechtCard(){const f=st.firma,R=recht();const im=R?R.impressum("de",firmaRecht()):null;
+  const cfg=`  firma: "${f.name||"WN Entrümpelung"}",\n  rechtsform: "${f.rechtsform||"Einzelunternehmen"}",\n  inhaber: "${f.inhaber||""}",\n  strasse: "${f.strasse||""}",\n  plz: "${f.plz||""}",\n  ort: "${f.ort||""}",\n  ustid: "${f.ustid||""}",\n  steuernr: "${f.steuernr||""}",\n  anzeige53: "${f.anzeige53||""}",\n  erlaubnis54: "${f.erlaubnis54||""}",\n  vihb: "${f.vihb||""}",\n  email: "${f.email||""}",\n  phone: "${f.tel||""}",`;
+  return `<div class="card"><h3>Rechtliches & Abfall-Genehmigungen</h3><div class="fields" style="margin-top:10px">
+   <div class="field"><label>Rechtsform</label><select id="c_rf">${["Einzelunternehmen","GbR","UG (haftungsbeschränkt)","GmbH"].map(r=>`<option${r===(f.rechtsform||"Einzelunternehmen")?" selected":""}>${r}</option>`).join("")}</select></div>
+   <div class="field"><label>Anzeige § 53 KrWG – Aktenzeichen</label><input id="c_a53" value="${esc(f.anzeige53||"")}" placeholder="Pflicht für Abfalltransport"></div>
+   <div class="field"><label>Erlaubnis § 54 KrWG (gefährliche Abfälle)</label><input id="c_e54" value="${esc(f.erlaubnis54||"")}" placeholder="leer = keine"></div>
+   <div class="field"><label>VIHB-Nummer (NL)</label><input id="c_vihb" value="${esc(f.vihb||"")}" placeholder="z. B. 512345VxHB"></div></div>
+   <div class="row" style="margin-top:10px"><button class="btn pri" data-act="saveFirma">Speichern</button></div>
+   ${im?`<details style="margin-top:10px"><summary class="small">Impressum ansehen</summary><dl style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:8px 0" class="small">${im.rows.map(r=>`<dt>${esc(r[0])}</dt><dd style="margin:0">${esc(r[1])}</dd>`).join("")}</dl></details>`:""}
+   <details style="margin-top:8px"><summary class="small">Daten für die Kunden-App (config.js auf GitHub)</summary><p class="small">Diese Zeilen in config.js ersetzen, damit Impressum, Datenschutz und Widerrufsbelehrung der Kunden-App stimmen:</p><textarea id="cfgTxt" style="min-height:200px;font-family:monospace;font-size:12px">${esc(cfg)}</textarea><button class="btn sm" data-act="copyEl" data-el="cfgTxt">Kopieren</button></details>
+   <div class="note" style="margin-top:10px">WhatsApp: Nutzen Sie ein eigenes Geschäftshandy und speichern Sie dort nur Kunden, die selbst WhatsApp nutzen – WhatsApp liest das Adressbuch aus.</div></div>`}
+
+/* ---------- Mahnung an NL-Verbraucher (WIK, art. 6:96 BW) ---------- */
+const MAHN_NL=["Betalingsherinnering (14-dagenbrief)","Aanmaning","Laatste aanmaning"];
+async function mahnGoNL(id){
+  const t=st.data.tickets[id],re=t.rechnung,m=t.mahnungen||[],stufe=m.length;if(stufe>=3){toast("Alle Mahnstufen sind schon versendet");return}
+  const k=re.kalk||{},hb=k.zahlbetrag||t.angebot||0,ik=wikKosten(hb),privat=istPrivat(t);
+  const geb=stufe>=1&&!m.some(x=>x.incasso)?ik:0,vorher=m.reduce((s,x)=>s+(+x.gebuehr||0),0),offen=r2(hb+vorher+geb);
+  const frist=addDays(today(),stufe===0?17:10),titel=MAHN_NL[stufe],kn=String(t.kunde?.name||"").trim();
+  toast(titel+" …");await loadJsPdf();const {jsPDF}=window.jspdf,d=new jsPDF({unit:"mm",format:"a4"}),M=16,W=210,CW=W-2*M;
+  let y=await pdfHead(d,`${titel} – factuur ${re.nr}`,`Datum ${fD(today())}`);y=kundeBlock(d,t,y);
+  const P=(s,size=10)=>{d.setFontSize(size);for(const l of d.splitTextToSize(s,CW)){if(y>PDF_END){d.addPage();y=20}d.text(l,M,y);y+=size*.42+.8}};
+  P(`Geachte ${kn||"heer/mevrouw"},`);y+=2;
+  if(stufe===0)P(`Volgens onze administratie is factuur ${re.nr} van ${fD(re.datum)} (${eur(hb)}) nog niet betaald. Wij verzoeken u het bedrag binnen 14 dagen na de dag van ontvangst van deze brief te betalen.${privat?` Als u niet binnen deze termijn betaalt, bent u buitengerechtelijke incassokosten verschuldigd van ${eur(ik)} (berekend volgens het Besluit vergoeding voor buitengerechtelijke incassokosten).`:""} Heeft u inmiddels betaald? Dan kunt u deze brief als niet verzonden beschouwen.`);
+  else if(stufe===1)P(`Ondanks onze betalingsherinnering van ${fD(m[0].datum)} hebben wij nog geen betaling ontvangen voor factuur ${re.nr}.${geb?` Daarom zijn nu de aangekondigde incassokosten van ${eur(geb)} verschuldigd.`:""} Wij verzoeken u het openstaande bedrag uiterlijk ${fD(frist)} te betalen.`);
+  else P(`Factuur ${re.nr} is ondanks herinnering en aanmaning nog steeds niet betaald. Dit is onze laatste aanmaning. Betaalt u niet uiterlijk ${fD(frist)}, dan dragen wij de vordering zonder verdere aankondiging over aan een incassobureau of starten wij een gerechtelijke procedure.`);
+  y+=4;const R=(l,v,b)=>{d.setFont("helvetica",b?"bold":"normal");d.setFontSize(10);d.text(l,M+2,y);d.text(v,W-M-2,y,{align:"right"});y+=5.5};
+  d.setFillColor(238,242,248);d.rect(M,y-4.5,CW,6.5,"F");R(`Factuur ${re.nr} van ${fD(re.datum)}`,eur(hb));
+  m.forEach(x=>{if(x.gebuehr)R("Buitengerechtelijke incassokosten",eur(x.gebuehr))});if(geb)R("Buitengerechtelijke incassokosten",eur(geb));
+  d.line(W-M-70,y-3,W-M,y-3);R("Openstaand bedrag",eur(offen),true);d.setFont("helvetica","normal");y+=3;
+  const f=st.firma;P(`Gelieve ${eur(offen)} ${stufe===0?"binnen 14 dagen na ontvangst van deze brief":`uiterlijk ${fD(frist)}`} over te maken${f.iban?` naar IBAN ${f.iban}${f.bank?` (${f.bank})`:""}`:""} onder vermelding van ${re.nr}.`);y+=3;
+  P("Met vriendelijke groet");y+=1;P(f.inhaber||f.name||"WN Entrümpelung");
+  pdfFoot(d,`${titel} ${re.nr}`);
+  if(!await savePdf(d,`${titel.replace(/[^\w]+/g,"_")}_${re.nr}.pdf`))return;
+  await logT(id,`${titel} (NL/WIK) erstellt, open ${eur(offen)}`,{mahnungen:[...m,{stufe:stufe+1,datum:today(),frist,gebuehr:geb,incasso:!!geb,nl:true,von:st.me}]});
+  const wa=`Geachte ${kn||"heer/mevrouw"},\n\nfactuur ${re.nr} (${eur(offen)}) staat nog open. ${stufe===0?"Wilt u binnen 14 dagen na ontvangst betalen?":`Gelieve uiterlijk ${fD(frist)} te betalen.`}${f.iban?` IBAN ${f.iban}, o.v.v. ${re.nr}.`:""} De brief sturen wij als PDF mee.\n\nMet vriendelijke groet\n${f.name||"WN Entrümpelung"}`;
+  openSheet(`<div class="spread"><h2>${esc(titel)}</h2><button class="btn sm" data-act="close">Schließen</button></div><p class="small">PDF gespeichert (Niederländisch, WIK-konform: 14 Tage nach Zugang, Incassokosten angekündigt). Am besten per Post oder E-Mail mit Zugangsnachweis senden.</p><div class="field"><textarea id="mh_t" style="min-height:150px">${esc(wa)}</textarea></div>${t.kunde?.tel?`<a class="btn pri big" target="_blank" rel="noopener" href="${esc(waLink(t.kunde.tel,wa))}">Per WhatsApp senden</a>`:""}<button class="btn" data-act="copyEl" data-el="mh_t">Text kopieren</button>`);
+}
+
 /* ---------- Klicks der neuen Funktionen ---------- */
 async function neuAct(a,el,id){
   switch(a){
@@ -1933,7 +2201,19 @@ async function neuAct(a,el,id){
     case"problemGo":await problemGo(id);return true;
     case"problemOk":{const t=st.data.tickets[id];await logT(id,"Problem geklärt: "+(t.problem?.grund||""),{problem:{...t.problem,offen:false,geklaert:nowIso()}});toast("Erledigt");openTicket(id);return true}
     case"voice":voiceOpen();return true;
-    case"mahn":await mahnGo(id);return true;
+    case"mahn":{const t=st.data.tickets[id];if(t&&docLang(t)==="nl")await mahnGoNL(id);else await mahnGo(id);return true}
+    case"wrPdf":await widerrufPdf(id);return true;
+    case"nlChk":{const t=st.data.tickets[id];await logT(id,`NL-Checkliste: ${el.dataset.k} ${el.checked?"✓":"✗"}`,{nlCheck:{...(t.nlCheck||{}),[el.dataset.k]:el.checked}});return true}
+    case"entsNeu":await entsNeu(id);return true;
+    case"festGo":await festGo();return true;
+    case"bStorno":await belegStorno(id);return true;
+    case"kaStart":kaDialog("start");return true;
+    case"kaBew":kaDialog("bew");return true;
+    case"kaZahl":kaDialog("zahl");return true;
+    case"kaSave":await kaSave(el.dataset.v);return true;
+    case"kaCsv":await kaCsv();return true;
+    case"eRech":await eRechnung(id);return true;
+    case"kiOk":{const me=st.me,p=st.data.profil?.[me]||{};const{_id,...r}=p;await st.db.doc("profil/"+me).set({...r,kiEinweisung:nowIso()});toast("Danke!");return true}
     case"nach":nachDialog(id);return true;
     case"nachSave":await nachSave(id);return true;
     case"vmPdf":await vollmachtPdf(id);return true;
@@ -1955,14 +2235,14 @@ async function neuAct(a,el,id){
 function kalkDialog2(){const e=st.kalkEdit;const t=st.data.tickets[e.id];const saved=t.kalk;t.kalk=e.k;kalkDialog(e.id,false);t.kalk=saved;}
 document.addEventListener("input",e=>{
   if(e.target.closest&&e.target.closest("#sheet")&&(e.target.id?.startsWith("kk_")||e.target.dataset?.ks))kalkRefresh();
-  if(e.target.id&&/^(ex_|vm_|nt_|sg_name)/.test(e.target.id)){const u=$("#sg_txt"),tp=$("#sg_typ");if(u&&tp&&st.data.tickets[st.openTicket])u.textContent=sigText(st.data.tickets[st.openTicket],tp.value)}
+  if(e.target.id&&/^(ex_|vm_|nt_|wr_|sg_name)/.test(e.target.id)){const u=$("#sg_txt"),tp=$("#sg_typ");if(u&&tp&&st.data.tickets[st.openTicket])u.textContent=sigText(st.data.tickets[st.openTicket],tp.value)}
 });
 document.addEventListener("change",e=>{
   const el=e.target;
   if(el.dataset?.ks)kalkRefresh();
   if(el.dataset?.bp&&st.belegPos){const p=st.belegPos[Number(el.dataset.i)];if(p){if(el.dataset.bp==="privat")p.privat=el.checked;else p.kategorie=el.value;posRefresh()}}
   if(el.id==="b_z")posRefresh();
-  if(el.id&&/^(ex_|vm_|nt_)/.test(el.id)){const u=$("#sg_txt"),tp=$("#sg_typ");if(u&&tp&&st.data.tickets[st.openTicket])u.textContent=sigText(st.data.tickets[st.openTicket],tp.value)}
+  if(el.id&&/^(ex_|vm_|nt_|wr_)/.test(el.id)){const u=$("#sg_txt"),tp=$("#sg_typ");if(u&&tp&&st.data.tickets[st.openTicket])u.textContent=sigText(st.data.tickets[st.openTicket],tp.value)}
 });
 
 /* ---------- Aktionen ---------- */
@@ -2060,13 +2340,16 @@ document.addEventListener("click",async e=>{
     case"delTicket":if(el.dataset.sure){await st.db.collection("tickets").doc(id).delete();closeSheet();toast("Ticket gelöscht")}else{el.dataset.sure="1";el.textContent="Wirklich löschen?"}break;
     case"scan":await scan(el.dataset.ticket||"");break;
     case"editBeleg":editBeleg(id);break;
-    case"saveBeleg":{const d=readBelegPos(readBeleg());await upd("belege",id,{...d,geaendert:nowIso()});toast("Gespeichert");closeSheet();break}
-    case"delBeleg":if(el.dataset.sure){await st.db.collection("belege").doc(id).delete();closeSheet();toast("Beleg gelöscht")}else{el.dataset.sure="1";el.textContent="Wirklich löschen?"}break;
+    case"saveBeleg":{const d=readBelegPos(readBeleg()),alt=st.data.belege[id]||{};if(alt.storniert||istFest(alt.datum)||istFest(d.datum)){toast("Festgeschriebener Zeitraum – keine Änderung möglich");break}
+      const felder=Object.keys(d).filter(k=>JSON.stringify(d[k])!==JSON.stringify(alt[k]));if(!felder.length){toast("Keine Änderung");break}
+      const vorher={};felder.forEach(k=>vorher[k]=alt[k]??null);
+      await upd("belege",id,{...d,geaendert:nowIso(),historie:[...(alt.historie||[]),{t:nowIso(),von:st.me,aktion:"geändert",felder,vorher}]});toast("Gespeichert");closeSheet();break}
+    case"delBeleg":toast("Belege werden nicht gelöscht, sondern storniert (GoBD)");break;
     case"export":await exportCsv();break;
     case"exportCopy":{const c=csv();if(!c.count){toast("Keine Buchungen im Zeitraum");break}openSheet(`<div class="spread"><h2>${esc(c.name)}</h2><button class="btn sm" data-act="close">Schließen</button></div><p class="small">Text kopieren, in eine leere Datei einfügen und als .csv speichern – oder direkt per E-Mail an den Steuerberater.</p><textarea style="width:100%;min-height:260px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px;font-size:12px" readonly>${esc(c.text.slice(1))}</textarea><button class="btn pri" data-act="copyCsv">Kopieren</button>`);break}
     case"copyCsv":copy(csv().text.slice(1));break;
     case"addEin":addEin();break;
-    case"saveEin":{const b=num($("#e_b").value),m=num($("#e_m").value)||0;if(!b){toast("Bitte Betrag");break}await save("einnahmen",null,{datum:$("#e_d").value,brutto:b,mwstSatz:m,mwst:mwstOf(b,m),zahlart:$("#e_z").value,beschreibung:$("#e_t").value.trim(),erstellt:nowIso(),von:st.me});closeSheet();toast("Einnahme gespeichert");break}
+    case"saveEin":{const b=num($("#e_b").value),m=num($("#e_m").value)||0;if(!b){toast("Bitte Betrag");break}if(istFest($("#e_d").value)){toast("Monat festgeschrieben");break}await save("einnahmen",null,{datum:$("#e_d").value,brutto:b,mwstSatz:m,mwst:mwstOf(b,m),zahlart:$("#e_z").value,beschreibung:$("#e_t").value.trim(),erstellt:nowIso(),von:st.me});closeSheet();toast("Einnahme gespeichert");break}
     case"saveFirma":{const d={...st.firma,name:$("#c_n").value.trim(),tel:$("#c_t").value.trim(),web:$("#c_w").value.trim(),mwst:num($("#c_m").value)??19,kleinunternehmer:$("#c_k").checked,...readFirmaExtra()};await st.db.doc("einstellungen/firma").set(d);toast("Gespeichert");break}
     case"kSend":{const v=i=>$("#"+i).value.trim();const ok=$("#k_ok").checked;const stamp=new Date().toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});const txt=`${ANF_TAG} Neue Anfrage über die App\nName: ${v("k_n")}\nTelefon: ${v("k_t")}\nAdresse: ${v("k_a")||"-"}\nOrt: ${v("k_o")}\nLeistung: ${v("k_l")}\nWunschtermin: ${fD(v("k_w"))||"-"}\nEtage/Aufzug: ${v("k_e")||"-"}\n\n${v("k_b")}\n\nEinwilligung: ${ok?`ja, Daten automatisch übernehmen (${stamp})`:"nein"}\n\n(Fotos folgen hier im Chat)`;if(!v("k_n")||!v("k_b")){toast("Bitte Name und Beschreibung ausfüllen");break}try{if(ok)localStorage.setItem("wn_kunde",JSON.stringify({n:v("k_n"),t:v("k_t"),a:v("k_a"),o:v("k_o")}));else localStorage.removeItem("wn_kunde")}catch(_){}openSheet(`<div class="spread"><h2>Anfrage senden</h2><button class="btn sm" data-act="close">Zurück</button></div><div class="card" style="background:var(--s2);white-space:pre-wrap;font-size:13.5px">${esc(txt)}</div><a class="btn pri big" target="_blank" rel="noopener" href="${esc(waLink(st.firma.tel,txt))}">WhatsApp öffnen und senden</a><div class="small">Danach im Chat Fotos anhängen. Telefon: ${esc(st.firma.tel)}</div>`);break}
   }}catch(err){console.error(err);toast(err&&(err.message||err.code)?"Fehler: "+(err.message||err.code):"Fehler")}
@@ -2092,6 +2375,7 @@ render();
   if(owner)$("#roleBar").classList.remove("hide");
   if(db){
     db.doc("einstellungen/firma").onSnapshot(s=>{st.firma=s.exists?s.data():{};render()},()=>{});
+    db.doc("einstellungen/kasse").onSnapshot(s=>{st.kasse=s.exists?s.data():{};render()},()=>{});
   }
   if(!db||st.realRole==="kunde"){render();return}
   const timer=setTimeout(()=>{st.slow=true;render()},10000);

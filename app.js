@@ -428,7 +428,7 @@
       '<a class="btn out" href="qr-code.png" download="WN-Entruempelung-QR-Code.png" style="min-height:40px">' + ic("dl", 16) + esc(t("qrDownload")) + '</a></div></section>' +
       '<p class="note">' + esc(t("testNote")) + '</p>' +
       (C.teamApp ? '<p class="note"><a href="' + esc(C.teamApp) + '" target="_blank" rel="noopener">' + esc(t("teamArea")) + '</a></p>' : '') +
-      '</main>' + nav();
+      legalLinks() + '</main>' + nav();
   }
 
   function roleBar() {
@@ -505,7 +505,8 @@
         '<div class="field"><label class="lbl" for="f-addr">' + esc(t("address")) + ' *</label><input class="inp" id="f-addr" data-field="address" autocomplete="street-address" value="' + esc(d.address) + '"></div>' +
         '<div class="field"><label class="lbl" for="f-note">' + esc(t("note")) + '</label><textarea class="inp" id="f-note" data-field="note" placeholder="' + esc(t("notePh")) + '">' + esc(d.note) + '</textarea></div>' +
         '<label class="switch" style="align-items:flex-start;padding:14px 16px"><span class="tx"><b style="font-weight:600;line-height:1.45">' + esc(t("consent")) + '</b><span class="muted xs">' + esc(t("consentHint")) + '</span></span>' +
-        '<span class="tg"><input type="checkbox" data-field="consent"' + (d.consent ? " checked" : "") + '><i></i></span></label>';
+        '<span class="tg"><input type="checkbox" data-field="consent"' + (d.consent ? " checked" : "") + '><i></i></span></label>' +
+        '<p class="muted xs" style="margin:0">' + esc(t("legal_req")) + ' <button data-act="legal" data-id="datenschutz" style="background:none;border:0;color:inherit;text-decoration:underline;font:inherit;padding:0;cursor:pointer">' + esc(t("legal_ds")) + '</button> · <button data-act="legal" data-id="widerruf" style="background:none;border:0;color:inherit;text-decoration:underline;font:inherit;padding:0;cursor:pointer">' + esc(t("legal_wr")) + '</button></p>';
       foot = '<div class="foot"><button class="btn" data-act="next">' + ic("send", 18, "flip") + esc(t("send")) + '</button></div>';
     }
     return head + '<main>' + body + '</main>' + foot;
@@ -610,7 +611,7 @@
       '<div class="row2"><button class="btn out" data-act="tips">' + esc(t("showTips")) + '</button><button class="btn out" data-act="voice">' + ic("mic", 18) + esc(t("ansage")) + '</button></div>' +
       '<button class="btn" data-act="call">' + ic("phone", 18) + esc(t("call")) + '</button>' +
       (C.teamApp ? '<section class="card" style="gap:10px"><h2 class="h2">' + esc(t("teamArea")) + '</h2><p class="soft sm">' + esc(t("teamAreaD")) + '</p><a class="btn out" href="' + esc(C.teamApp) + '" target="_blank" rel="noopener">' + ic("list", 18) + esc(t("teamArea")) + '</a></section>' : '') +
-      '</main>' + nav();
+      legalLinks() + '</main>' + nav();
   }
 
   function scrAnsage() {
@@ -673,7 +674,30 @@
       '<button class="round" data-act="lbnext" aria-label="' + esc(t("nextPic")) + '">' + ic("chev", 20, "flip") + '</button></div></div>';
   }
 
-  var SCREENS = { home: scrHome, request: scrRequest, orders: scrOrders, order: scrOrder, search: scrSearch, help: scrHelp, ansage: scrAnsage };
+  /* ---------- Rechtliches: Impressum, Datenschutz, Widerruf (Deutsch / Niederländisch) ---------- */
+  function firmaCfg() { return { name: C.firma || "WN Entrümpelung", rechtsform: C.rechtsform, inhaber: C.inhaber, strasse: C.strasse, plz: C.plz, ort: C.ort, tel: C.phone || C.whatsapp, email: C.email, ustid: C.ustid, steuernr: C.steuernr, anzeige53: C.anzeige53, erlaubnis54: C.erlaubnis54, vihb: C.vihb }; }
+  function legalLinks() {
+    return '<nav class="legal" aria-label="' + esc(t("legal_nav")) + '" style="display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;padding:6px 0 2px">' +
+      [["impressum", "legal_imp"], ["datenschutz", "legal_ds"], ["widerruf", "legal_wr"]].map(function (x) { return '<button class="linkbtn" data-act="legal" data-id="' + x[0] + '" style="background:none;border:0;color:inherit;text-decoration:underline;font:inherit;font-size:13px;opacity:.85;cursor:pointer;padding:6px 2px">' + esc(t(x[1])) + '</button>'; }).join("") + '</nav>';
+  }
+  function scrLegal() {
+    var R = window.WN_RECHT, f = firmaCfg(), lg = S.lang === "nl" ? "nl" : "de", k = S.legal || "impressum", h = "";
+    if (!R) return bar(t("legal_imp"), "", "home") + '<main><p class="note">–</p></main>' + nav();
+    var note = (S.lang !== "de" && S.lang !== "nl") ? '<p class="note">' + esc(t("legal_lang")) + '</p>' : "";
+    function sec(a) { return a.map(function (x) { return '<section class="card" style="gap:8px"><h2 class="h2">' + esc(x.h) + '</h2>' + x.p.map(function (p) { return '<p class="soft sm" style="margin:0">' + esc(p) + '</p>'; }).join("") + '</section>'; }).join(""); }
+    var title;
+    if (k === "impressum") {
+      var im = R.impressum(lg, f); title = im.titel;
+      var missing = !f.strasse || !f.inhaber;
+      h = (im.untertitel ? '<p class="muted xs">' + esc(im.untertitel) + '</p>' : '') + '<section class="card"><dl style="display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:8px 14px;margin:0">' +
+        im.rows.map(function (r) { return '<dt class="muted xs">' + esc(r[0]) + '</dt><dd style="margin:0">' + esc(r[1]) + '</dd>'; }).join("") + '</dl></section>' +
+        im.p.map(function (p) { return '<p class="soft sm">' + esc(p) + '</p>'; }).join("") +
+        (missing ? '<p class="note">' + esc(t("legal_missing")) + '</p>' : '');
+    } else if (k === "datenschutz") { var ds = R.datenschutz(lg, f); title = ds.titel; h = sec(ds.abschnitte); }
+    else { var w = R.widerruf(lg, f); title = w.titel; h = sec(w.abschnitte) + '<section class="card" style="gap:6px"><h2 class="h2">' + esc(w.formularTitel) + '</h2>' + w.formular.map(function (p) { return '<p class="soft sm" style="margin:0">' + esc(p) + '</p>'; }).join("") + '</section>'; }
+    return bar(title, "", "home") + '<main>' + note + h + legalLinks() + '</main>' + nav();
+  }
+  var SCREENS = { home: scrHome, request: scrRequest, orders: scrOrders, order: scrOrder, search: scrSearch, help: scrHelp, ansage: scrAnsage, legal: scrLegal };
 
   function render() {
     var l = L();
@@ -752,6 +776,7 @@
     svc: function (el) { var id = el.getAttribute("data-id"), a = S.draft.services, i = a.indexOf(id); if (i >= 0) a.splice(i, 1); else a.push(id); saveDraft(); render(); },
     obj: function (el) { S.draft.obj = el.getAttribute("data-id"); saveDraft(); render(); },
     fill: function (el) { S.draft.fill = el.getAttribute("data-id"); saveDraft(); render(); },
+    legal: function (el) { S.legal = el.getAttribute("data-id"); go("legal", { force: true }); },
     floor: function (el) { S.draft.floor = Math.max(0, Math.min(30, (S.draft.floor || 0) + Number(el.getAttribute("data-d")))); saveDraft(); render(); },
     mode: function (el) { S.draft.mode = el.getAttribute("data-id"); saveDraft(); render(); },
     day: function (el) { S.draft.date = el.getAttribute("data-d"); saveDraft(); render(); },
