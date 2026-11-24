@@ -174,6 +174,14 @@ td.n,th.n{text-align:end;font-variant-numeric:tabular-nums}
 .tp i.on{background:#22C55E}.tp i.ab{background:#F59E0B}.tp i.ur{background:var(--accL)}
 .tp b{flex:1;color:var(--head);font-weight:600}
 .hide{display:none!important}
+.scan-strip{display:flex;gap:8px;overflow-x:auto}.scan-strip:empty{display:none}
+.scan-strip .sp{position:relative;flex:0 0 84px;height:112px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--s2)}
+.scan-strip.one .sp{flex:1 1 auto;height:auto;min-height:200px;max-height:46vh}.scan-strip img{width:100%;height:100%;object-fit:cover}.scan-strip.one img{object-fit:contain;max-height:46vh}
+.scan-strip .sp.busy img{filter:brightness(.35)}.spin-w{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff;text-align:center;padding:4px}.spin-w small{font-size:10.5px}
+.scan-strip .sp .rb{position:absolute;top:4px;min-width:24px;height:24px;border-radius:99px;border:0;background:rgba(0,0,0,.72);color:#fff;font-size:13px;cursor:pointer;padding:0 6px}
+.scan-strip .sp .rb.del{right:4px;font-size:15px}.scan-strip .sp .rb.rot{left:4px}.scan-strip .sp .rb.org{left:32px;font-size:10.5px}
+.scan-strip .sp span{position:absolute;left:6px;bottom:6px;background:#fff;color:#000;border-radius:99px;font-size:11px;padding:1px 7px;font-weight:600}
+.scan-cam{min-height:64px;font-size:16px;gap:10px;justify-content:center;display:flex;align-items:center;width:100%}
 </style>
 </head>
 <body>
@@ -194,6 +202,7 @@ td.n,th.n{text-align:end;font-variant-numeric:tabular-nums}
 <script src="i18n.js"></script>
 <script src="flags.js"></script>
 <script src="recht.js"></script>
+<script src="ui-i18n.js"></script>
 <script>
 "use strict";
 /* ---------- Konstanten ---------- */
@@ -302,7 +311,7 @@ function render(){
   if(!st.loaded){m.innerHTML=`<div class="empty">${st.slow?"Daten sind noch nicht erreichbar – bitte Internetverbindung prüfen.":"Daten werden geladen …"}</div>`;return}
   const T={start:["Übersicht",()=>startHint()+vHeute()+vStart()],tickets:[isChef()?"Tickets":"Meine Aufträge",vTickets],belege:["Belege",vBelege],geld:["Finanzen",vGeld],team:["Team & Firma",vTeam],zeit:["Arbeitszeit",()=>vHeute()+vZeit()],urlaub:["Urlaub & Krankmeldung",vUrlaub],ich:["Mein Bereich",vIch]};
   const [ti,fn]=T[st.tab]||T.tickets;$("#title").textContent=ti;$("#sub").textContent=(st.firma.name||"WN Entrümpelung")+" · "+({chef:"Chef",mitarbeiter:"Mitarbeiter"}[st.role]);
-  m.innerHTML=fn();if(st.tab==="team"&&isChef())showLogoPrev();
+  m.innerHTML=fn();if(st.tab==="team"&&isChef())showLogoPrev();try{uiApply()}catch(e){}
   if(st.openTicket&&st.data.tickets[st.openTicket]&&$("#bd").classList.contains("open")&&$("#sheet [data-tk]"))openTicket(st.openTicket,true);
   if(st.openMa&&$("#bd").classList.contains("open")&&$("#sheet [data-ma]")&&!$("#sheet").contains(document.activeElement&&document.activeElement.matches("input,textarea,select")?document.activeElement:null))openMa(st.openMa);
 }
@@ -324,6 +333,7 @@ function vStart(){
     <button class="qb" data-act="fromWa">${svg("tickets")}Aus Kunden-Anfrage</button>
     <button class="qb" data-act="scan">${svg("cam")}Beleg fotografieren</button>
     <button class="qb" data-act="voice">${svg("tickets")}Sprachassistent (KI)</button>
+    <button class="qb" data-act="suche">${svg("tickets")}Suchen</button>
     <button class="qb" data-act="tab" data-tab="geld">${svg("geld")}Steuerberater-Export</button>
   </div>
   <div class="kpis">
@@ -1036,7 +1046,7 @@ function belegForm(b){
 }
 function readBeleg(){const v=id=>$("#"+id).value.trim();const brutto=num(v("b_b")),satz=num(v("b_s"))||0;
   return{datum:v("b_d"),haendler:v("b_h"),brutto,mwstSatz:satz,mwst:num(v("b_m"))??mwstOf(brutto,satz),kategorie:v("b_k"),zahlart:v("b_z"),ticketId:v("b_t"),notiz:v("b_n")}}
-async function scan(ticketId){
+async function scanAlt(ticketId){
   const f=await pickImage();if(!f)return;
   const small=await shrink(f,1400);
   openSheet(`<div class="spread"><h2>Beleg erfassen</h2><button class="btn sm" data-act="close">Abbrechen</button></div>
@@ -1336,7 +1346,7 @@ function designSheet(){
 function renderRole(){const b=$("#roleBar");if(!b||b.classList.contains("hide"))return;b.innerHTML=`<div class="in">${[["chef","Chef","Alles: Tickets, Finanzen, Team"],["mitarbeiter","Mitarbeiter","Aufträge, Zeit, Urlaub"],["kunde","Kunde","Startseite und Anfrage"]].map(([v,l,d])=>`<button data-act="setRole" data-v="${v}" aria-pressed="${st.role===v}" title="${d}">${l}</button>`).join("")}</div>`}
 function renderActs(){renderRole();
   const kunde=st.role==="kunde",a=$("#acts");if(!a)return;
-  a.innerHTML=`${!kunde&&st.sample?`<button class="rbtn" data-act="voice" aria-label="Sprachassistent"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>`:""}${kunde?`<button class="rbtn" data-act="klangs" aria-label="${esc(tr("language"))}: ${esc(kLang().name)}">${window.WN_FLAG?window.WN_FLAG(st.k.lang,24):"DE"}</button>`:""}
+  a.innerHTML=`${!kunde?`<button class="rbtn" data-act="suche" aria-label="Suchen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button><button class="rbtn" data-act="uiLang" aria-label="Sprache">${window.WN_FLAG?window.WN_FLAG(uiLang(),24):uiLang().toUpperCase()}</button>`:""}${!kunde&&st.sample?`<button class="rbtn" data-act="voice" aria-label="Sprachassistent"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>`:""}${kunde?`<button class="rbtn" data-act="klangs" aria-label="${esc(tr("language"))}: ${esc(kLang().name)}">${window.WN_FLAG?window.WN_FLAG(st.k.lang,24):"DE"}</button>`:""}
   <button class="rbtn" data-act="kdesign" aria-label="${esc(kunde?tr("designTitle"):"Design")}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21v-4a4 4 0 1 1 4 4h-4"/><path d="M21 3a16 16 0 0 0 -12.8 10.2"/><path d="M21 3a16 16 0 0 1 -10.2 12.8"/><path d="M10.6 9a9 9 0 0 1 4.4 4.4"/></svg></button>
   ${kunde?`<button class="rbtn" id="readBtn" data-act="kread" aria-pressed="${speaking}" aria-label="${esc(tr("readAloud"))}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>`:""}`;
 }
@@ -1609,19 +1619,20 @@ function belegSplits(b){
   const g={};b.positionen.filter(p=>!p.privat).forEach(p=>{const key=p.kategorie+"|"+p.satz;g[key]=g[key]||{kategorie:p.kategorie,satz:Number(p.satz)||0,brutto:0,mwst:0};g[key].brutto=r2(g[key].brutto+(+p.brutto||0));g[key].mwst=r2(g[key].mwst+mwstOf(p.brutto,p.satz))});
   return Object.values(g);
 }
-function posEditor(ps){
-  st.belegPos=ps.map(p=>({...p}));
+function posEditor(ps,gesamt){
+  st.belegPos=ps.map(p=>({...p}));st.belegGesamt=gesamt??null;
   return `<div id="posBox"><h3 style="margin-top:4px">Positionen auf dem Bon</h3><p class="small" style="margin:2px 0 6px">Privates (Zigaretten, Kaugummi, Snacks, Getränke …) ist markiert und zählt nicht als Betriebsausgabe.</p><div class="list" style="gap:6px">${st.belegPos.map((p,i)=>`<div class="item" style="cursor:default;padding:10px;${p.privat?"border-color:#b45309":""}">
    <div class="head"><span style="flex:1;min-width:0">${esc(p.text)}</span><b style="font-weight:600">${eur(p.brutto)}</b></div>
    <div class="row" style="flex-wrap:nowrap"><select data-bp="kategorie" data-i="${i}" style="flex:1;min-width:0">${KAT.map(k=>`<option${k===p.kategorie?" selected":""}>${k}</option>`).join("")}</select><span class="small">${esc(p.satz)} %</span>
    <label class="small" style="display:flex;gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" data-bp="privat" data-i="${i}" ${p.privat?"checked":""} style="width:20px;height:20px">privat</label></div>
-   ${p.grund?`<div class="small" style="color:#f59e0b">${esc(p.grund)}</div>`:""}</div>`).join("")}</div><div id="posSum" class="note" style="margin-top:8px"></div></div>`;
+   ${p.grund?`<div class="small" style="color:#f59e0b">${esc(p.grund)}</div>`:""}${p.unsicher?`<div class="small"><span class="pill" style="color:#f59e0b;border-color:#f59e0b">bitte prüfen: privat oder betrieblich?</span></div>`:""}</div>`).join("")}</div><div id="posSum" class="note" style="margin-top:8px"></div></div>`;
 }
 function posRefresh(){
   if(!st.belegPos||!$("#posSum"))return;const c=posCalc(st.belegPos);
   $("#b_b").value=c.brutto;$("#b_m").value=c.mwst;$("#b_k").value=c.kategorie;const s=$("#b_s");if(![...s.options].some(o=>o.value==String(c.satz)))s.insertAdjacentHTML("beforeend",`<option value="${c.satz}">${c.satz} %</option>`);s.value=String(c.satz);
   const z=$("#b_z")?.value||"";
-  $("#posSum").innerHTML=`Bon gesamt ${eur(c.gesamt)} · <b>betrieblich ${eur(c.brutto)}</b>${c.privat?` · <b style="color:#f59e0b">privat ${eur(c.privat)}</b>${/Firm|Überweisung/.test(z)?"<br>Mit Firmengeld bezahlt: Der Privatanteil wird für den Steuerberater als Privatentnahme verbucht.":"<br>Der Privatanteil wird nicht erstattet und nicht als Ausgabe gebucht."}`:""}`;
+  const gs=st.belegGesamt,diff=gs!=null&&Math.abs(gs-c.gesamt)>0.05;
+  $("#posSum").innerHTML=`${diff?`<span style="color:#f59e0b">Hinweis: Positionen ergeben ${eur(c.gesamt)}, Bon-Summe ${eur(gs)} – bitte mit dem Bon vergleichen.</span><br>`:""}Bon gesamt ${eur(c.gesamt)} · <b>betrieblich ${eur(c.brutto)}</b>${c.privat?` · <b style="color:#f59e0b">privat ${eur(c.privat)}</b>${/Firm|Überweisung/.test(z)?"<br>Mit Firmengeld bezahlt: Der Privatanteil wird für den Steuerberater als Privatentnahme verbucht.":"<br>Der Privatanteil wird nicht erstattet und nicht als Ausgabe gebucht."}`:""}`;
 }
 function readBelegPos(d){
   if(!st.belegPos?.length||!$("#posBox"))return d;
@@ -2185,6 +2196,305 @@ async function mahnGoNL(id){
   openSheet(`<div class="spread"><h2>${esc(titel)}</h2><button class="btn sm" data-act="close">Schließen</button></div><p class="small">PDF gespeichert (Niederländisch, WIK-konform: 14 Tage nach Zugang, Incassokosten angekündigt). Am besten per Post oder E-Mail mit Zugangsnachweis senden.</p><div class="field"><textarea id="mh_t" style="min-height:150px">${esc(wa)}</textarea></div>${t.kunde?.tel?`<a class="btn pri big" target="_blank" rel="noopener" href="${esc(waLink(t.kunde.tel,wa))}">Per WhatsApp senden</a>`:""}<button class="btn" data-act="copyEl" data-el="mh_t">Text kopieren</button>`);
 }
 
+
+/* ===================== NEU 4: Beleg-Scanner + KI wie JoumHome, Schnellsuche, Sprachen für Chef & Mitarbeiter ===================== */
+const CAMSVG='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="4"/></svg>';
+let SCAN_RES=null;
+const compress=(f,max=1600)=>shrink(f,max);
+async function aiJson(prompt,images){
+  if(!st.sample)return{err:"KI ist hier nicht verfügbar – bitte selbst ausfüllen."};
+  try{return{v:await ki(prompt,images)}}catch(e){return{err:{not_granted:"KI wurde nicht erlaubt – bitte selbst ausfüllen.",rate_limited:"KI gerade ausgelastet – später erneut versuchen."}[e?.code]||"Auslesen fehlgeschlagen – bitte selbst ausfüllen."}}
+}
+/* Abbrechen des Scanners auch beim Schließen des Fensters */
+{const _cs=closeSheet;closeSheet=function(){_cs();if(SCAN_RES){const r=SCAN_RES;setTimeout(()=>{try{r()}catch(e){}},0)}}}
+/* ---------- Dokument-Scanner: Ränder finden, entzerren, drehen ---------- */
+const loadImg=b=>new Promise((res,rej)=>{ const u=URL.createObjectURL(b); const i=new Image(); i.onload=()=>{ URL.revokeObjectURL(u); res(i); }; i.onerror=e=>{ URL.revokeObjectURL(u); rej(e); }; i.src=u; });
+function localQuad(img){
+  const S=320, k=Math.min(1,S/Math.max(img.width,img.height)), W=Math.max(8,Math.round(img.width*k)), H=Math.max(8,Math.round(img.height*k));
+  const c=document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d",{willReadFrequently:true}); g.drawImage(img,0,0,W,H);
+  const d=g.getImageData(0,0,W,H).data, L=new Uint8Array(W*H), hist=new Array(256).fill(0);
+  for(let i=0;i<W*H;i++){ const v=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)|0; L[i]=v; hist[v]++; }
+  let sum=0; for(let i=0;i<256;i++) sum+=i*hist[i]; let sB=0,wB=0,best=0,th=128; const N=W*H;
+  for(let t=0;t<256;t++){ wB+=hist[t]; if(!wB) continue; const wF=N-wB; if(!wF) break; sB+=t*hist[t]; const mB=sB/wB,mF=(sum-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF); if(v>best){best=v;th=t;} }
+  const lab=new Int32Array(N).fill(-1); let bestC=null;
+  for(let s=0;s<N;s++){ if(lab[s]!==-1||L[s]<=th) continue; const q=[s]; lab[s]=s; const pts=[]; while(q.length){ const p=q.pop(); pts.push(p); const x=p%W,y=(p/W)|0; for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=W||ny>=H) continue; const n=ny*W+nx; if(lab[n]===-1&&L[n]>th){ lab[n]=s; q.push(n); } } } if(!bestC||pts.length>bestC.length) bestC=pts; }
+  if(!bestC) return null; const frac=bestC.length/N; if(frac<0.06||frac>0.96) return null;
+  const P=bestC.map(p=>[p%W,(p/W)|0]);
+  const pick=(f,max)=>P.reduce((a,b)=>(max?f(b)>f(a):f(b)<f(a))?b:a);
+  const qa=[pick(p=>p[0]+p[1],0),pick(p=>p[0]-p[1],1),pick(p=>p[0]+p[1],1),pick(p=>p[0]-p[1],0)];
+  const qb=[pick(p=>p[1],0),pick(p=>p[0],1),pick(p=>p[1],1),pick(p=>p[0],0)];
+  const area=q=>Math.abs(q.reduce((s,p,i)=>{const n=q[(i+1)%4]; return s+p[0]*n[1]-n[0]*p[1];},0))/2;
+  const quad=area(qa)>=area(qb)?qa:qb, A=area(quad); if(A<1||bestC.length/A<0.82) return null;
+  return quad.map(p=>[(p[0]+0.5)/W,(p[1]+0.5)/H]);
+}
+function homography(src,dst){ // maps dst -> src
+  const A=[],b=[]; for(let i=0;i<4;i++){ const [x,y]=dst[i],[u,v]=src[i]; A.push([x,y,1,0,0,0,-u*x,-u*y]); b.push(u); A.push([0,0,0,x,y,1,-v*x,-v*y]); b.push(v); }
+  for(let c=0;c<8;c++){ let m=c; for(let r=c+1;r<8;r++) if(Math.abs(A[r][c])>Math.abs(A[m][c])) m=r; [A[c],A[m]]=[A[m],A[c]]; [b[c],b[m]]=[b[m],b[c]]; const p=A[c][c]||1e-12; for(let r=0;r<8;r++){ if(r===c) continue; const f=A[r][c]/p; if(!f) continue; for(let k=c;k<8;k++) A[r][k]-=f*A[c][k]; b[r]-=f*b[c]; } }
+  return b.map((v,i)=>v/A[i][i]).concat(1);
+}
+function warpDoc(img,q){ // q: 4 Punkte in Bildpixeln, Reihenfolge oben-links, oben-rechts, unten-rechts, unten-links (Leserichtung)
+  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  let w=Math.max(dist(q[0],q[1]),dist(q[3],q[2])), h=Math.max(dist(q[0],q[3]),dist(q[1],q[2]));
+  const s=Math.min(1,2000/Math.max(w,h)); w=Math.max(40,Math.round(w*s)); h=Math.max(40,Math.round(h*s));
+  const sc=document.createElement("canvas"); sc.width=img.width; sc.height=img.height; const sg=sc.getContext("2d",{willReadFrequently:true}); sg.drawImage(img,0,0);
+  const sd=sg.getImageData(0,0,img.width,img.height).data, SW=img.width, SH=img.height;
+  const M=homography(q,[[0,0],[w,0],[w,h],[0,h]]);
+  const oc=document.createElement("canvas"); oc.width=w; oc.height=h; const og=oc.getContext("2d"); const od=og.createImageData(w,h), o=od.data;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const z=M[6]*x+M[7]*y+1, u=(M[0]*x+M[1]*y+M[2])/z, v=(M[3]*x+M[4]*y+M[5])/z;
+    const x0=Math.floor(u), y0=Math.floor(v), fx=u-x0, fy=v-y0, i=(y*w+x)*4;
+    if(x0<0||y0<0||x0>=SW-1||y0>=SH-1){ o[i]=o[i+1]=o[i+2]=255; o[i+3]=255; continue; }
+    const a=(y0*SW+x0)*4, b=a+4, c=a+SW*4, d=c+4;
+    for(let ch=0;ch<3;ch++) o[i+ch]=(sd[a+ch]*(1-fx)+sd[b+ch]*fx)*(1-fy)+(sd[c+ch]*(1-fx)+sd[d+ch]*fx)*fy;
+    o[i+3]=255;
+  }
+  // Kontrast: 2 %–98 % Helligkeit auf volle Spanne
+  const hist=new Array(256).fill(0); for(let i=0;i<o.length;i+=4) hist[(o[i]*0.299+o[i+1]*0.587+o[i+2]*0.114)|0]++;
+  const N=w*h; let acc=0,lo=0,hi=255; for(let i=0;i<256;i++){ acc+=hist[i]; if(acc>N*0.02){lo=i;break;} } acc=0; for(let i=255;i>=0;i--){ acc+=hist[i]; if(acc>N*0.02){hi=i;break;} }
+  if(hi-lo>40){ const f=255/(hi-lo); for(let i=0;i<o.length;i+=4) for(let ch=0;ch<3;ch++) o[i+ch]=Math.max(0,Math.min(255,(o[i+ch]-lo)*f)); }
+  og.putImageData(od,0,0); return oc;
+}
+function rotateCanvas(src,deg){ const r=((deg%360)+360)%360; if(!r) return src; const c=document.createElement("canvas"); c.width=r%180?src.height:src.width; c.height=r%180?src.width:src.height; const g=c.getContext("2d"); g.translate(c.width/2,c.height/2); g.rotate(r*Math.PI/180); g.drawImage(src,-src.width/2,-src.height/2); return c; }
+const canvasBlob=c=>new Promise(r=>c.toBlob(b=>r(b),"image/jpeg",0.86));
+async function docFix(file){
+  try{
+    const small=await compress(file,1600); const img=await loadImg(small);
+    const W=img.width,H=img.height; let loc=localQuad(img);
+    let ai=null;
+    if(st.sample){ const r=await aiJson(`Auf dem Foto ist ein Dokument (Kassenbon, Rechnung, Vertragsseite, Brief oder Zähler). Es kann schief, seitlich oder auf dem Kopf liegen.
+Gib die 4 Ecken des Dokuments als Bruchteile der Bildbreite/-höhe (0 bis 1, Ursprung oben links im Bild) an – und zwar in der Reihenfolge, wie man das Dokument aufrecht liest: [oben-links, oben-rechts, unten-rechts, unten-links] des TEXTES. Liegt das Dokument z. B. auf dem Kopf, ist "oben-links" des Textes im Bild unten rechts.
+Antworte nur mit JSON: {"dokument":true oder false,"ecken":[[x,y],[x,y],[x,y],[x,y]],"drehung":0|90|180|270 (Grad im Uhrzeigersinn, um die der Text gedreht ist)}`,[small]); ai=r.v||null; }
+    const ok=e=>Array.isArray(e)&&e.length===4&&e.every(p=>Array.isArray(p)&&p.length===2&&p.every(n=>typeof n==="number"&&n>=-0.05&&n<=1.05));
+    let q=null, rot=0;
+    if(ai&&ai.dokument!==false&&ok(ai.ecken)){
+      const E=ai.ecken.map(p=>[Math.min(1,Math.max(0,p[0])),Math.min(1,Math.max(0,p[1]))]);
+      if(loc){ // genaue lokale Ecken in KI-Reihenfolge bringen
+        const used=new Set(); const m=E.map(p=>{ let bi=-1,bd=9; loc.forEach((l,i)=>{ if(used.has(i)) return; const d=Math.hypot(l[0]-p[0],l[1]-p[1]); if(d<bd){bd=d;bi=i;} }); used.add(bi); return {i:bi,d:bd}; });
+        const cyc=m.map(x=>x.i), okCyc=[0,1,2,3].some(s=>cyc.every((v,j)=>v===(s+j)%4));
+        q=okCyc&&m.every(x=>x.d<0.18)?cyc.map(i=>loc[i]):E;
+      } else q=E;
+    } else if(loc){ q=loc; rot=[0,90,180,270].includes(ai?.drehung)?ai.drehung:0; }
+    if(!q) return {blob:small,changed:false};
+    const cx=q.reduce((s,p)=>s+p[0],0)/4, cy=q.reduce((s,p)=>s+p[1],0)/4;
+    const px=q.map(p=>[(cx+(p[0]-cx)*1.015)*W,(cy+(p[1]-cy)*1.015)*H].map((v,i)=>Math.max(0,Math.min(i?H-1:W-1,v))));
+    let c=warpDoc(img,px); if(rot) c=rotateCanvas(c,-rot);
+    return {blob:await canvasBlob(c),changed:true,orig:small};
+  }catch(e){ console.warn("docFix",e); return {blob:file,changed:false}; }
+}
+async function rotateBlob(b,deg){ const img=await loadImg(b); const c=document.createElement("canvas"); c.width=img.width; c.height=img.height; c.getContext("2d").drawImage(img,0,0); return canvasBlob(rotateCanvas(c,deg)); }
+
+function scanPages({multi=false,title="Scannen",tip=""}={}){
+  return new Promise(res=>{
+    const pages=[]; let done=false;
+    const fin=v=>{ if(done) return; done=true; SCAN_RES=null; pages.forEach(p=>p.u&&URL.revokeObjectURL(p.u)); res(v); };
+    openSheet(`<div class="spread"><h2>${esc(title)}</h2><button class="btn sm" id="scX">Abbrechen</button></div>
+    ${tip?`<div class="small">${esc(tip)}</div>`:""}
+    <div class="scan-strip${multi?"":" one"}" id="scStrip"></div>
+    <label class="btn ${multi?"pri":"pri"} scan-cam" for="scCam" id="scCamB">${CAMSVG}<span id="scCamL">Kamera öffnen</span></label>
+    <input id="scCam" class="hide" type="file" accept="image/*" capture="environment">
+    <div class="row" style="justify-content:space-between;align-items:center"><label class="btn sm" for="scGal">Aus Galerie / Dateien wählen</label><input id="scGal" class="hide" type="file" accept="image/*"${multi?" multiple":""}>
+    <button class="btn pri" id="scDone" disabled>${multi?"Fertig":"Übernehmen"}</button></div>
+    <div class="small">Wird automatisch gerade gerückt, zugeschnitten und gedreht. Tipp: Dokument auf einen dunklen Untergrund legen, gutes Licht.</div>`);
+    SCAN_RES=()=>fin([]);
+    const busy=()=>pages.some(p=>p.busy);
+    const paint=()=>{ const el=$("#scStrip"); if(!el) return;
+      el.innerHTML=pages.map((p,i)=>`<div class="sp${p.busy?" busy":""}">${p.u?`<img src="${p.u}" alt="Seite ${i+1}">`:""}${p.busy?`<div class="spin-w"><div class="spin"></div><small>wird gerade gerückt …</small></div>`:""}<span>${multi?i+1:(p.changed?"✓ ausgerichtet":"Original")}</span>${p.busy?"":`<button class="rb rot" data-rot="${i}" aria-label="Drehen">↻</button>${p.orig?`<button class="rb org" data-org="${i}" aria-label="Original">${p.useOrig?"Auto":"Orig."}</button>`:""}`}<button class="rb del" data-del="${i}" aria-label="Seite entfernen">×</button></div>`).join("");
+      el.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ const [p]=pages.splice(+b.dataset.del,1); p.u&&URL.revokeObjectURL(p.u); paint(); });
+      el.querySelectorAll("[data-rot]").forEach(b=>b.onclick=async()=>{ const p=pages[+b.dataset.rot]; p.busy=true; paint(); p.cur=await rotateBlob(p.cur,90); if(p.u) URL.revokeObjectURL(p.u); p.u=URL.createObjectURL(p.cur); p.busy=false; paint(); });
+      el.querySelectorAll("[data-org]").forEach(b=>b.onclick=()=>{ const p=pages[+b.dataset.org]; p.useOrig=!p.useOrig; [p.cur,p.alt]=[p.alt,p.cur]; if(p.u) URL.revokeObjectURL(p.u); p.u=URL.createObjectURL(p.cur); paint(); });
+      const d=$("#scDone"); d.disabled=!pages.length||busy();
+      if(multi){ $("#scCamL").textContent=pages.length?`Seite ${pages.length+1} fotografieren`:"Kamera öffnen"; d.textContent=pages.length?`Fertig (${pages.length} ${pages.length>1?"Seiten":"Seite"})`:"Fertig"; }
+      else { $("#scCamL").textContent=pages.length?"Neu fotografieren":"Kamera öffnen"; $("#scCamB").classList.toggle("pri",!pages.length); }
+    };
+    const add=fs=>{ if(!multi){ pages.forEach(p=>p.u&&URL.revokeObjectURL(p.u)); pages.length=0; fs=fs.slice(0,1); }
+      for(const f of fs){ const p={busy:true,cur:f,u:URL.createObjectURL(f)}; pages.push(p);
+        docFix(f).then(r=>{ if(done) return; p.cur=r.blob; p.changed=r.changed; if(r.changed){ p.orig=true; p.alt=r.orig; } URL.revokeObjectURL(p.u); p.u=URL.createObjectURL(p.cur); p.busy=false; paint(); }); }
+      paint(); };
+    $("#scCam").onchange=e=>{ add([...e.target.files]); e.target.value=""; };
+    $("#scGal").onchange=e=>{ add([...e.target.files]); e.target.value=""; };
+    $("#scX").onclick=()=>closeSheet();
+    $("#scDone").onclick=()=>{ if(busy()) return; const out=pages.map(p=>p.cur); closeSheet(); fin(out); };
+  });
+}
+
+/* ---------- Beleg-KI wie JoumHome: Positionen, unsicher, Lernregeln, Zuordnung zum Auftrag, Miete erkennen ---------- */
+if(!KAT.includes("Fahrzeugmiete (Transporter/Anhänger)"))KAT.splice(2,0,"Fahrzeugmiete (Transporter/Anhänger)");
+SKR["Fahrzeugmiete (Transporter/Anhänger)"]="4580";
+const PRIV_BSP_WN="Zigaretten/Tabak, Kaugummi, Süßigkeiten, Snacks, Getränke, Kaffee to go, belegte Brötchen, Zeitschriften, Lotto, Kosmetik, Drogerie für den Eigenbedarf, Medikamente, private Lebensmittel, Kleidung ohne Arbeitsschutz, Spielzeug, Geschenke, Gutscheine, Pfand für private Getränke";
+const MIET_RE_WN=/\b(transporter|anh[äa]nger|mietwagen|sprinter|kleinbus|lkw|vermietung|mietger[äa]t|leihger[äa]t|container|sixt|europcar|enterprise|hertz|starcar|buchbinder|toom.?mietpark|obi.?mietservice)\b/i;
+const DEPO_RE_WN=/\b(wertstoffhof|deponie|recyclinghof|abfall|entsorgung|awb|milieustraat|afval|schrott|sperrm[üu]ll)\b/i;
+function posKey(t){return String(t||"").toLowerCase().replace(/[0-9.,x*€%]+/g," ").replace(/\s+/g," ").trim().slice(0,40)}
+function belegRegeln(){let lok={};try{lok=JSON.parse(localStorage.getItem("wn_belegregeln")||"{}")}catch(e){}return{...(st.bregeln?.r||{}),...lok}}
+function posRegelnTxt(){const e=Object.entries(belegRegeln()).slice(-60);return e.length?`\nFrühere Korrekturen – genau so übernehmen: ${e.map(([k,v])=>`"${k}" = ${v==="p"?"privat":"betrieblich"}`).join("; ")}.`:""}
+async function posLearn(P){
+  const k=(P||[]).filter(p=>p.korr&&posKey(p.text));if(!k.length)return;
+  const r={...belegRegeln()};k.forEach(p=>{const key=posKey(p.text);delete r[key];r[key]=p.privat?"p":"b"});
+  const e=Object.fromEntries(Object.entries(r).slice(-80));
+  try{localStorage.setItem("wn_belegregeln",JSON.stringify(e))}catch(x){}
+  if(isChef()&&st.db){try{await st.db.doc("einstellungen/belegregeln").set({r:e,t:nowIso()});st.bregeln={r:e}}catch(x){}}
+}
+function belegTicketListe(){const g=addDays(today(),-60);return list("tickets").filter(t=>OFFEN.includes(t.status)||t.status==="Erledigt"||String(t.termin||t.erstellt||"").slice(0,10)>=g).sort((a,b)=>b.nr-a.nr).slice(0,40)}
+const BELEG_PROMPT2=()=>`Auf dem Foto (ggf. mehrere Seiten) ist ein Kassenbon oder eine Rechnung (Deutschland oder Niederlande). Eine Entrümpelungsfirma hat damit für ihre Arbeit eingekauft. Es können private Artikel dabei sein, die steuerlich NICHT als Betriebsausgabe gelten dürfen.
+Antworte nur mit einem JSON-Objekt:
+{"datum":"YYYY-MM-DD oder null","haendler":"Name des Geschäfts","gesamt":Gesamtbetrag brutto des ganzen Bons,"positionen":[{"text":"Artikel wie auf dem Bon, Abkürzungen verständlich ausgeschrieben","brutto":Zeilenbetrag brutto (Menge × Preis, Rabatt abgezogen),"mwst_satz":19|7|0|21|9,"kategorie":"genau einer aus ${KAT.join("|")}","privat":true/false,"unsicher":true/false,"grund":"kurz, warum privat – nur wenn privat"}],"notiz":"kurz, was gekauft wurde (ohne Privates)","miete":true/false,"mietArt":"z. B. Transporter, Anhänger, Container – oder null","entsorgung":true/false,"ticketNr":Nummer des passenden Auftrags oder null,"ticketGrund":"kurz warum – oder null"}
+Regeln:
+- privat=true bei allem, was eine Entrümpelungsfirma nicht für ihre Arbeit braucht, z. B. ${PRIV_BSP_WN}.
+- Betrieblich: Kraftstoff/AdBlue → Kraftstoff; Öl, Scheibenwasser, Wäsche, Reparatur → Fahrzeug (Reparatur/Wartung); Müllsäcke, Folie, Klebeband, Kartons, Handschuhe, Arbeitsschutz → Material/Verbrauch; Werkzeug → Werkzeug/Geräte; Deponie/Wertstoffhof → Entsorgung/Deponie; Miete von Transporter/Anhänger/Container → Fahrzeugmiete (Transporter/Anhänger).
+- unsicher=true, wenn ein Artikel privat oder betrieblich sein kann (z. B. Wasserflaschen für das Team, Batterien) – dann privat=false lassen.
+- Jede gekaufte Zeile genau einmal. Pfand und Rabatte zum zugehörigen Artikel. Zwischensumme, Summe, Zahlungsart, MwSt-Tabelle, Rückgeld NICHT als Position. Bei Dienstleistungsrechnung (z. B. Deponie, Vermietung) reicht eine Position.
+- MwSt-Satz je Zeile aus dem Bon (Kennbuchstaben A/B, NL 21/9 %). Zahlen mit Punkt.
+- miete=true bei Miete von Fahrzeug oder Gerät (Transporter, Anhänger, Container, Mietgerät). entsorgung=true bei Wertstoffhof/Deponie/Entsorger.
+- ticketNr nur, wenn der Beleg erkennbar zu einem dieser Aufträge passt (gleiches Datum wie Termin, gleicher Ort, Deponie nach einer Räumung, Transporter für diesen Auftrag), sonst null. Aufträge: ${belegTicketListe().map(t=>`#${t.nr} ${t.titel||t.leistung||""}, ${t.kunde?.ort||""}${t.termin?", Termin "+String(t.termin).slice(0,10):""} (${t.status})`).join("; ")||"keine"}${posRegelnTxt()}`;
+function belegZuoHtml(r,ticketId){
+  const vor=ticketId?st.data.tickets[ticketId]:(r.ticketNr?list("tickets").find(t=>String(t.nr)===String(r.ticketNr).replace("#","")):null);
+  const miete=!!r.miete||MIET_RE_WN.test(`${r.haendler||""} ${r.mietArt||""}`),ents=!!r.entsorgung||DEPO_RE_WN.test(`${r.haendler||""} ${r.notiz||""}`);
+  if(!vor&&!miete&&!ents)return"";
+  return `<div class="card" id="zuoBox" style="background:var(--s2);display:flex;flex-direction:column;gap:6px"><b>${miete?esc(r.mietArt||"Fahrzeug-/Gerätemiete")+" erkannt":ents?"Entsorgung erkannt":"Passt zu einem Auftrag?"}</b>
+   <div class="small">${vor?`Die KI meint: gehört zu Auftrag <b>#${esc(vor.nr)}</b> ${esc(vor.titel||vor.leistung||"")}${r.ticketGrund?" – "+esc(r.ticketGrund):""}. Bitte unten bei „Zu Auftrag“ prüfen.`:"Bitte unten bei „Zu Auftrag“ den passenden Auftrag wählen – dann zählt der Beleg in der Nachkalkulation."}${ents?" Die Entsorgung wird zusätzlich als Nachweis beim Auftrag eingetragen.":""}</div></div>`;
+}
+async function scan(ticketId){
+  const files=await scanPages({multi:true,title:"Beleg scannen",tip:"Kassenbon oder Rechnung fotografieren – lange Bons in mehreren Teilen. Die KI liest jede Position, sortiert Privates (z. B. Zigaretten, Kaugummi) aus und ordnet den Beleg dem Auftrag zu."});
+  if(!files.length)return;
+  const imgs=await Promise.all(files.map(f=>compress(f,1600)));
+  openSheet(`<div class="spread"><h2>Beleg erfassen</h2><button class="btn sm" data-act="close">Abbrechen</button></div>
+  <div class="gallery">${imgs.map((b,i)=>`<div class="g"><img src="${URL.createObjectURL(b)}" alt="Seite ${i+1}"></div>`).join("")}</div>
+  <div id="kiSt" class="ai"><span class="spin"></span><span>KI liest den Beleg und prüft jede Position …</span></div>
+  <div id="zuo"></div><div id="bf">${belegForm({ticketId})}</div>
+  <button class="btn pri big" id="bGo">Beleg speichern</button>`);
+  const sync=()=>{const b=num($("#b_b").value),s=num($("#b_s").value)||0;if(b!=null)$("#b_m").value=mwstOf(b,s)};
+  $("#b_b").oninput=sync;$("#b_s").onchange=sync;st.belegPos=null;
+  let kiOk=false,kiR=null;
+  (async()=>{const res=await aiJson(BELEG_PROMPT2(),imgs.slice(0,4));
+    if(res.err){$("#kiSt").innerHTML=`<span>${esc(res.err)}</span>`;return}
+    const r=res.v||{};kiR=r;const rules=belegRegeln();
+    if(r.datum)$("#b_d").value=r.datum;if(r.haendler)$("#b_h").value=r.haendler;if(r.notiz)$("#b_n").value=r.notiz;
+    const ps=(Array.isArray(r.positionen)?r.positionen:[]).filter(x=>x&&(x.text||x.brutto)).map(x=>({text:String(x.text||"Artikel").slice(0,80),brutto:r2(x.brutto),satz:Number(x.mwst_satz)||0,kategorie:KAT.includes(x.kategorie)?x.kategorie:"Sonstiges",privat:!!x.privat,unsicher:!x.privat&&!!x.unsicher,grund:x.privat?String(x.grund||"").slice(0,80):""}));
+    ps.forEach(p=>{const k=rules[posKey(p.text)];if(k){p.privat=k==="p";p.unsicher=false;if(p.privat&&!p.grund)p.grund="wie beim letzten Mal"}});
+    if(ps.length){$("#bf").insertAdjacentHTML("beforeend",posEditor(ps,num(r.gesamt)));posRefresh()}
+    else if(r.gesamt!=null){$("#b_b").value=r.gesamt;sync()}
+    if(!ticketId&&r.ticketNr){const t=list("tickets").find(x=>String(x.nr)===String(r.ticketNr).replace("#",""));if(t&&$("#b_t")){const sel=$("#b_t");if(![...sel.options].some(o=>o.value===t._id))sel.insertAdjacentHTML("beforeend",`<option value="${esc(t._id)}">#${esc(t.nr)} ${esc(t.titel||"")}</option>`);sel.value=t._id}}
+    if((r.miete||MIET_RE_WN.test(`${r.haendler||""} ${r.mietArt||""}`))&&!ps.length)$("#b_k").value="Fahrzeugmiete (Transporter/Anhänger)";
+    $("#zuo").innerHTML=belegZuoHtml(r,ticketId);
+    kiOk=true;const np=ps.filter(p=>p.privat),nu=ps.filter(p=>p.unsicher).length;
+    $("#kiSt").innerHTML=`<span>${!ps.length&&!r.gesamt?"Nichts erkannt – bitte selbst ausfüllen.":np.length&&np.length===ps.length?"Alles auf dem Bon wirkt privat – bitte prüfen, ob das eine Betriebsausgabe ist.":np.length?`✓ <b style="color:#f59e0b">${np.length} private Position${np.length>1?"en":""} aussortiert (− ${eur(np.reduce((s,p)=>s+p.brutto,0))})</b>${nu?`, ${nu} bitte prüfen`:""}.`:`✓ Beleg ausgelesen${nu?` – ${nu} Position${nu>1?"en":""} bitte prüfen`:""}.`}</span>`;
+  })();
+  $("#bGo").onclick=async()=>{const d=readBelegPos(readBeleg());if(!d.brutto&&!d.privat){toast("Bitte Betrag eintragen");return}if(istFest(d.datum)){toast("Dieser Monat ist festgeschrieben – bitte Datum prüfen oder im aktuellen Monat erfassen");return}
+    $("#bGo").disabled=true;$("#bGo").textContent="Wird gespeichert …";
+    try{const ids=[];for(const b of imgs)ids.push(await upload(b));
+      await save("belege",null,{...d,bildId:ids[0],bildIds:ids,ki:kiOk,von:st.me,erstellt:nowIso(),...(kiR?.miete?{miete:kiR.mietArt||true}:{})});
+      await posLearn(st.belegPos);
+      if(d.ticketId&&kiR&&(kiR.entsorgung||DEPO_RE_WN.test(`${d.haendler} ${d.notiz}`))){const t=st.data.tickets[d.ticketId];if(t)await logT(d.ticketId,`Entsorgung (Beleg): ${d.haendler} ${eur(d.brutto)}`,{entsorgung:[...(t.entsorgung||[]),{datum:d.datum,anlage:d.haendler,land:/NL/.test(d.haendler||"")||Number(d.mwstSatz)===21?"NL":"DE",art:"Sperrmüll / Mischabfall",kosten:d.brutto,fotoId:ids[0],t:nowIso(),von:st.me,ausBeleg:true}]})}
+      else if(d.ticketId)await logT(d.ticketId,`Beleg zugeordnet: ${d.haendler||d.kategorie} ${eur(d.brutto)}`);
+      toast("Beleg gespeichert");closeSheet();
+    }catch(e){toast(e.message||"Fehler beim Speichern");$("#bGo").disabled=false;$("#bGo").textContent="Beleg speichern"}};
+}
+
+/* ---------- Schnellsuche (wie JoumHome) ---------- */
+const nrm=x=>String(x??"").toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").normalize("NFD").replace(/[̀-ͯ]/g,"");
+function sFunktionen(){const C=isChef();return[
+  ["Neuer Auftrag","Ticket anlegen","neu auftrag ticket anlegen kunde anfrage",()=>newTicket(),C],
+  ["Beleg scannen","Kassenbon oder Rechnung fotografieren","beleg kassenbon quittung rechnung scannen tanken foto",()=>scan(),true],
+  ["Sprachassistent","Sprechen statt tippen (KI)","sprache sprechen mikrofon ki assistent frage",()=>voiceOpen(),!!st.sample],
+  ["Finanzen","Einnahmen, Ausgaben, Steuerberater","finanzen geld umsatz steuer csv steuerberater export",()=>{closeSheet();st.tab="geld";render()},C],
+  ["Kassenbuch","Bargeld, Kasse zählen","kasse kassenbuch bar bargeld zaehlen",()=>{closeSheet();st.tab="geld";render()},C],
+  ["Offene Rechnungen","Mahnung, Zahlungserinnerung","mahnung erinnerung offen ueberfaellig rechnung",()=>{closeSheet();st.tab="geld";render()},C],
+  ["Monat festschreiben","GoBD","festschreiben gobd monat sperren",()=>{closeSheet();st.tab="geld";render()},C],
+  ["Team & Firma","Firmendaten, Preise, Logo, Rechtliches","team firma preise logo impressum rechtliches vihb anzeige einstellungen",()=>{closeSheet();st.tab="team";render()},C],
+  ["Sprache","Sprache der App ändern","sprache language taal dil lingua",()=>uiLangSheet(),true],
+  ["Belege","Alle Belege","belege ausgaben quittungen",()=>{closeSheet();st.tab="belege";render()},true],
+].filter(f=>f[4])}
+function sIndex(){
+  const R=[],add=(g,t,s,kw,run)=>R.push({g,t,s,k:nrm(`${t} ${s||""} ${kw||""}`),tn:nrm(t),run});
+  const C=isChef();
+  list("tickets").filter(t=>C||(t.zugewiesen||[]).includes(st.me)).forEach(t=>{const k=t.kunde||{};add("Aufträge",`#${t.nr} ${t.titel||t.leistung||"Auftrag"}`,`${k.name||""}${k.ort?" · "+k.ort:""} · ${t.status}${t.termin?" · "+fDT(t.termin):""}`,`${t.nr} ${k.tel||""} ${k.adresse||""} ${t.beschreibung||""} ${t.leistung||""} ${t.rechnung?.nr||""} ${(t.verlauf||[]).map(v=>v.text).join(" ").slice(0,600)}`,()=>openTicket(t._id))});
+  list("belege").filter(b=>C||b.von===st.me).forEach(b=>{const x=+b.brutto||0;add("Belege",`${b.haendler||b.kategorie||"Beleg"} · ${eur(x)}`,`${fD(b.datum)} · ${b.kategorie||""}${b.storniert?" · storniert":""}`,`${b.notiz||""} ${x.toFixed(2)} ${x.toFixed(2).replace(".",",")} ${(b.positionen||[]).map(p=>p.text).join(" ")} ${b.zahlart||""}`,()=>editBeleg(b._id))});
+  if(C){list("einnahmen").forEach(e=>{const x=+e.brutto||0;add("Einnahmen",`${e.beschreibung||"Einnahme"} · ${eur(x)}`,`${fD(e.datum)} · ${e.zahlart||""}`,`${e.rechnungNr||""} ${x.toFixed(2).replace(".",",")}`,()=>{closeSheet();st.tab="geld";render()})});
+    (typeof teamList==="function"?teamList():[]).forEach(m=>add("Team",m.name||"Mitarbeiter",m.rolle||"",`${m.tel||""} ${m.email||""}`,()=>{closeSheet();st.tab="team";render()}))}
+  sFunktionen().forEach(f=>add("Funktionen",f[0],f[1],f[2],f[3]));
+  return R;
+}
+let S_RES=[];
+function sRun(q){
+  const box=$("#sres");if(!box)return;const toks=nrm(q).split(/\s+/).filter(Boolean);
+  if(!toks.length){box.innerHTML=`<div class="small" style="padding:8px 2px">Suchen nach Auftragsnummer, Kunde, Ort, Telefon, Händler, Betrag oder Funktion.</div>`;S_RES=[];return}
+  const all=sIndex().filter(r=>toks.every(t=>r.k.includes(t)));
+  all.forEach(r=>{r.sc=(r.tn.startsWith(toks[0])?3:0)+(toks.every(t=>r.tn.includes(t))?2:0)+(r.g==="Funktionen"?.5:0)});
+  all.sort((a,b)=>b.sc-a.sc);
+  const by={},order=[];for(const r of all){if(!by[r.g]){by[r.g]=[];order.push(r.g)}if(by[r.g].length<6)by[r.g].push(r)}
+  order.sort((a,b)=>by[b][0].sc-by[a][0].sc);
+  S_RES=[];let h="";
+  for(const g of order){h+=`<div class="kcap" style="margin:10px 0 4px">${esc(g)}</div>`;for(const r of by[g]){const i=S_RES.push(r)-1;h+=`<button class="item" data-si="${i}" style="text-align:start;width:100%"><b>${esc(r.t)}</b>${r.s?`<span class="small">${esc(r.s)}</span>`:""}</button>`}}
+  box.innerHTML=(h||`<div class="small" style="padding:8px 2px">Nichts gefunden für „${esc(q)}“.</div>`)+(st.sample?`<button class="btn" style="margin-top:10px;width:100%" data-act="sKi">„${esc(q.slice(0,40))}“ die KI fragen</button>`:"");
+  box.querySelectorAll("[data-si]").forEach(b=>b.onclick=()=>{const r=S_RES[+b.dataset.si];closeSheet();try{r.run()}catch(e){console.error(e)}});
+}
+function openSuche(){
+  openSheet(`<div class="spread"><h2>Suchen</h2><button class="btn sm" data-act="close">Schließen</button></div>
+  <div class="field"><input id="sq" type="search" placeholder="z. B. 1012, Meyer, Nordhorn, Aral, 45,90, Kasse …" autocomplete="off" enterkeyhint="search"></div><div id="sres"></div>`);
+  const q=$("#sq");let t=null;q.addEventListener("input",()=>{clearTimeout(t);t=setTimeout(()=>sRun(q.value),120)});
+  q.addEventListener("keydown",e=>{if(e.key==="Enter"&&S_RES[0]){e.preventDefault();const r=S_RES[0];closeSheet();r.run()}});
+  sRun("");setTimeout(()=>q.focus(),60);
+}
+
+/* ---------- Sprachen für Chef & Mitarbeiter ---------- */
+const UI_VOCAB=new Set(window.WN_UI_VOCAB||Object.keys(window.WN_UI||{}));
+const UI_LANGS=(window.WN_LANGS||[{code:"de",name:"Deutsch",dir:"ltr"}]);
+const UI_IDX={de:0,en:1,tr:2,ar:3,ru:4,es:5,fr:6,nl:7};
+function uiLang(){try{return localStorage.getItem("wn_ui_lang")||st.data.profil?.[st.me]?.lang||"de"}catch(e){return"de"}}
+const uiNorm=s=>String(s).replace(/\s+/g," ").trim();
+const uiKey=s=>uiNorm(s).replace(/[-+−]?\d[\d.,:]*/g,"#");
+function uiDict(lang){const i=UI_IDX[lang];if(!i)return null;const D=window.WN_UI||{},x=(st.uiExtra||{})[lang]||{};return k=>{const a=D[k];if(a&&a[i-1])return a[i-1];return x[k]||null}}
+function uiFill(tpl,orig){const nums=uiNorm(orig).match(/[-+−]?\d[\d.,:]*/g)||[];let i=0;return tpl.replace(/##/g,"\x01#").replace(/#/g,()=>nums[i++]??"#").replace(/\x01/g,"#")}
+const UI_ORIG=new WeakMap(),UI_SKIP="script,style,textarea,input,svg,[contenteditable],.no-ui,#sq,#vcT";
+let uiMissing=new Set(),uiBusy=false;
+function uiTranslateNode(root){
+  if(st.role==="kunde")return;const lang=uiLang();if(lang==="de"&&!document.body.__uiWasTr)return;
+  const look=uiDict(lang);
+  const doText=n=>{if(n.parentElement&&n.parentElement.closest(UI_SKIP))return;let o=UI_ORIG.get(n);const cur=n.nodeValue;
+    if(o==null||(cur!==o.tr&&cur!==o.de)){o={de:cur,tr:null};UI_ORIG.set(n,o)}
+    const s=uiNorm(o.de);if(!s||!/[A-Za-zÄÖÜäöüß]{2}/.test(s))return;
+    if(lang==="de"){if(cur!==o.de)n.nodeValue=o.de;return}
+    const k=uiKey(s),t=look&&look(k);
+    if(t){const v=o.de.replace(s,uiFill(t,s));o.tr=v;if(cur!==v)n.nodeValue=v}else if(UI_VOCAB.has(k))uiMissing.add(k)};
+  const doAttr=el=>{for(const a of ["placeholder","aria-label","title"]){const v=el.getAttribute(a);if(!v)continue;const ka="__ui_"+a;let d=el[ka];if(d==null||(v!==d&&v!==el[ka+"t"])){d=v;el[ka]=d}
+    if(lang==="de"){if(v!==d)el.setAttribute(a,d);continue}const k=uiKey(d),t=look&&look(k);if(t){const tv=uiFill(t,d);el[ka+"t"]=tv;if(v!==tv)el.setAttribute(a,tv)}else if(UI_VOCAB.has(k))uiMissing.add(k)}};
+  if(root.nodeType===3){doText(root);return}
+  if(root.nodeType!==1)return;
+  if(root.closest&&root.closest(UI_SKIP))return;
+  doAttr(root);root.querySelectorAll?.("[placeholder],[aria-label],[title]").forEach(doAttr);
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let n;while(n=w.nextNode())doText(n);
+  if(uiMissing.size)uiAiSoon();
+}
+let uiAiT=null;
+function uiAiSoon(){clearTimeout(uiAiT);uiAiT=setTimeout(uiAiFill,1200)}
+async function uiAiFill(){
+  const lang=uiLang();if(lang==="de"||uiBusy||!st.sample||!uiMissing.size)return;uiBusy=true;
+  try{const keys=[...uiMissing].slice(0,60);uiMissing=new Set([...uiMissing].slice(60));
+    const name=(UI_LANGS[UI_IDX[lang]]||{}).name||lang;
+    const r=await ki(`Übersetze diese Texte aus der Oberfläche einer Firmen-App (Entrümpelung, Aufträge, Belege, Finanzen) ins ${name}. Kurz, natürlich, wie in einer App. "#" ist ein Platzhalter für eine Zahl und muss genau so oft erhalten bleiben. Fachbegriffe wie GoBD, § 35a, KrWG, XRechnung, WhatsApp, PDF, CSV unverändert lassen. Antworte NUR mit JSON {"Originaltext":"Übersetzung", ...}:\n${JSON.stringify(keys)}`);
+    if(r&&typeof r==="object"){st.uiExtra=st.uiExtra||{};const x=st.uiExtra[lang]={...(st.uiExtra[lang]||{})};let n=0;for(const k of keys){const v=r[k];if(typeof v==="string"&&v.split("#").length===k.split("#").length){x[k]=v;n++}}
+      try{localStorage.setItem("wn_ui_x_"+lang,JSON.stringify(x))}catch(e){}
+      if(isChef()&&n){try{await st.db.doc("einstellungen/ui_"+lang).set({x,t:nowIso()})}catch(e){}}
+      uiTranslateNode(document.body)}
+  }catch(e){}finally{uiBusy=false;if(uiMissing.size)uiAiSoon()}
+}
+function uiApply(){const lang=uiLang(),L=UI_LANGS[UI_IDX[lang]]||UI_LANGS[0];
+  if(st.role!=="kunde"){document.documentElement.lang=lang;const dir=L.dir||"ltr";["main","#sheet","header .top"].forEach(s=>{const e=document.querySelector(s);if(e)e.dir=dir})}
+  document.body.__uiWasTr=lang!=="de";uiTranslateNode(document.body)}
+function uiLangSheet(){const cur=uiLang();
+  openSheet(`<div class="spread"><h2>Sprache · Language · Dil · اللغة</h2><button class="btn sm" data-act="close">✕</button></div>
+  <div class="list">${UI_LANGS.map(l=>`<button class="item" data-act="uiSetLang" data-id="${l.code}" style="flex-direction:row;align-items:center;gap:12px" aria-pressed="${l.code===cur}">${window.WN_FLAG?window.WN_FLAG(l.code,28):""}<b style="flex:1;text-align:start" class="no-ui">${esc(l.name)}</b>${l.code===cur?"✓":""}</button>`).join("")}</div>
+  <p class="small">${st.sample?"Texte, die noch nicht übersetzt sind, übersetzt die KI beim ersten Anzeigen automatisch.":"Rechtliche Dokumente (Rechnung, Angebot, Verträge) bleiben in der Sprache des Kunden."}</p>`)}
+async function uiSetLang(code){try{localStorage.setItem("wn_ui_lang",code)}catch(e){}
+  try{st.uiExtra=st.uiExtra||{};st.uiExtra[code]={...(st.uiExtra[code]||{}),...JSON.parse(localStorage.getItem("wn_ui_x_"+code)||"{}")}}catch(e){}
+  await uiLoadShared(code);
+  try{const p=st.data.profil?.[st.me];if(st.db&&st.me&&p!==undefined){const{_id,...r}=p||{};await st.db.doc("profil/"+st.me).set({...r,lang:code})}}catch(e){}
+  closeSheet();render();uiApply();toast("✓")}
+async function uiLoadShared(code){if(!st.db||code==="de")return;try{await new Promise(res=>{let done=false;st.db.doc("einstellungen/ui_"+code).onSnapshot(s=>{if(s.exists){st.uiExtra=st.uiExtra||{};st.uiExtra[code]={...(s.data().x||{}),...(st.uiExtra[code]||{})};uiTranslateNode(document.body)}if(!done){done=true;res()}},()=>{if(!done){done=true;res()}});setTimeout(()=>{if(!done){done=true;res()}},2500)})}catch(e){}}
+/* Beobachter: alles Neue sofort übersetzen */
+(function(){const mo=new MutationObserver(ms=>{if(uiLang()==="de"&&!document.body.__uiWasTr)return;for(const m of ms){if(m.type==="characterData")uiTranslateNode(m.target);else m.addedNodes.forEach(n=>uiTranslateNode(n))}});
+  mo.observe(document.body,{childList:true,subtree:true,characterData:true});
+  try{const c=uiLang();st.uiExtra={[c]:JSON.parse(localStorage.getItem("wn_ui_x_"+c)||"{}")}}catch(e){}})();
+
 /* ---------- Klicks der neuen Funktionen ---------- */
 async function neuAct(a,el,id){
   switch(a){
@@ -2201,6 +2511,10 @@ async function neuAct(a,el,id){
     case"problemGo":await problemGo(id);return true;
     case"problemOk":{const t=st.data.tickets[id];await logT(id,"Problem geklärt: "+(t.problem?.grund||""),{problem:{...t.problem,offen:false,geklaert:nowIso()}});toast("Erledigt");openTicket(id);return true}
     case"voice":voiceOpen();return true;
+    case"suche":openSuche();return true;
+    case"uiLang":uiLangSheet();return true;
+    case"uiSetLang":await uiSetLang(el.dataset.id);return true;
+    case"sKi":{const q=$("#sq")?.value||"";voiceOpen();$("#vcT").value=q;await vcGo();return true}
     case"mahn":{const t=st.data.tickets[id];if(t&&docLang(t)==="nl")await mahnGoNL(id);else await mahnGo(id);return true}
     case"wrPdf":await widerrufPdf(id);return true;
     case"nlChk":{const t=st.data.tickets[id];await logT(id,`NL-Checkliste: ${el.dataset.k} ${el.checked?"✓":"✗"}`,{nlCheck:{...(t.nlCheck||{}),[el.dataset.k]:el.checked}});return true}
@@ -2240,7 +2554,7 @@ document.addEventListener("input",e=>{
 document.addEventListener("change",e=>{
   const el=e.target;
   if(el.dataset?.ks)kalkRefresh();
-  if(el.dataset?.bp&&st.belegPos){const p=st.belegPos[Number(el.dataset.i)];if(p){if(el.dataset.bp==="privat")p.privat=el.checked;else p.kategorie=el.value;posRefresh()}}
+  if(el.dataset?.bp&&st.belegPos){const p=st.belegPos[Number(el.dataset.i)];if(p){if(el.dataset.bp==="privat"){p.privat=el.checked;p.korr=true;p.unsicher=false;if(!p.privat)p.grund="";else if(!p.grund)p.grund="von Hand aussortiert"}else p.kategorie=el.value;posRefresh()}}
   if(el.id==="b_z")posRefresh();
   if(el.id&&/^(ex_|vm_|nt_|wr_)/.test(el.id)){const u=$("#sg_txt"),tp=$("#sg_typ");if(u&&tp&&st.data.tickets[st.openTicket])u.textContent=sigText(st.data.tickets[st.openTicket],tp.value)}
 });
@@ -2343,7 +2657,7 @@ document.addEventListener("click",async e=>{
     case"saveBeleg":{const d=readBelegPos(readBeleg()),alt=st.data.belege[id]||{};if(alt.storniert||istFest(alt.datum)||istFest(d.datum)){toast("Festgeschriebener Zeitraum – keine Änderung möglich");break}
       const felder=Object.keys(d).filter(k=>JSON.stringify(d[k])!==JSON.stringify(alt[k]));if(!felder.length){toast("Keine Änderung");break}
       const vorher={};felder.forEach(k=>vorher[k]=alt[k]??null);
-      await upd("belege",id,{...d,geaendert:nowIso(),historie:[...(alt.historie||[]),{t:nowIso(),von:st.me,aktion:"geändert",felder,vorher}]});toast("Gespeichert");closeSheet();break}
+      await upd("belege",id,{...d,geaendert:nowIso(),historie:[...(alt.historie||[]),{t:nowIso(),von:st.me,aktion:"geändert",felder,vorher}]});await posLearn(st.belegPos);toast("Gespeichert");closeSheet();break}
     case"delBeleg":toast("Belege werden nicht gelöscht, sondern storniert (GoBD)");break;
     case"export":await exportCsv();break;
     case"exportCopy":{const c=csv();if(!c.count){toast("Keine Buchungen im Zeitraum");break}openSheet(`<div class="spread"><h2>${esc(c.name)}</h2><button class="btn sm" data-act="close">Schließen</button></div><p class="small">Text kopieren, in eine leere Datei einfügen und als .csv speichern – oder direkt per E-Mail an den Steuerberater.</p><textarea style="width:100%;min-height:260px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px;font-size:12px" readonly>${esc(c.text.slice(1))}</textarea><button class="btn pri" data-act="copyCsv">Kopieren</button>`);break}
@@ -2376,6 +2690,8 @@ render();
   if(db){
     db.doc("einstellungen/firma").onSnapshot(s=>{st.firma=s.exists?s.data():{};render()},()=>{});
     db.doc("einstellungen/kasse").onSnapshot(s=>{st.kasse=s.exists?s.data():{};render()},()=>{});
+    db.doc("einstellungen/belegregeln").onSnapshot(s=>{st.bregeln=s.exists?s.data():{}},()=>{});
+    uiLoadShared(uiLang());
   }
   if(!db||st.realRole==="kunde"){render();return}
   const timer=setTimeout(()=>{st.slow=true;render()},10000);

@@ -29,6 +29,13 @@ JoumHome bleibt unverändert unter `https://gijouma-maker.github.io/joumhome-tes
   - Mitarbeiter-Ansicht: `…/team/?rolle=mitarbeiter`
 - Team-Bereich **mit KI und gemeinsamer Datenbank**: der Claude-Link aus `config.js` (`teamApp`)
 
+## Neu (24.11.2026, Beleg-Scanner, Suche, Sprachen im Team)
+- **Beleg-Scanner wie bei JoumHome**: Kamera oder Galerie, mehrere Seiten für lange Bons, Ränder werden erkannt und der Bon gerade gezogen.
+- **KI sortiert automatisch**: jede Position einzeln, Privates (Zigaretten, Kaugummi …) getrennt, unsichere Positionen markiert, Summenprüfung gegen den Bon-Betrag. Transporter-/Anhängermiete und Deponie werden erkannt, der Beleg wird dem passenden Auftrag zugeordnet (Deponie-Beleg = Entsorgungsnachweis am Auftrag).
+- **Die KI lernt mit**: Wird eine Position von Hand auf privat/betrieblich umgestellt, gilt das beim nächsten Bon automatisch.
+- **Schnellsuche** (Lupe oben): Aufträge, Kunden, Belege, Einnahmen, Team und Funktionen; Mitarbeiter sehen nur ihre eigenen Aufträge. Findet sie nichts, kann man die KI fragen.
+- **8 Sprachen auch für Chef und Mitarbeiter** (Flagge oben): Deutsch, English, Türkçe, العربية (von rechts nach links), Русский, Español, Français, Nederlands. Jeder stellt seine eigene Sprache ein. Rechtliche Dokumente bleiben in der Sprache des Kunden. Längere Hinweistexte übersetzt in der Claude-Version die KI beim ersten Anzeigen; auf GitHub bleiben diese deutsch.
+
 ## Neu (23.11.2026, Recht DE/NL)
 - **Widerrufsrecht** (DE + NL): Belehrung + Muster-Formular automatisch im Angebot für Privatkunden, beim Auftrag unterschreiben „Belehrung erhalten“ und „vorzeitiger Beginn“, Anzeige der Frist, Warnung vor Arbeitsbeginn.
 - **Impressum, Datenschutzerklärung, Widerrufsrecht** in der Kunden-App (Deutsch + Niederländisch) – Daten in `config.js` eintragen (der Team-Bereich erzeugt die Zeilen unter Team & Firma → Rechtliches).
