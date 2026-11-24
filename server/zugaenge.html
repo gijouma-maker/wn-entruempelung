@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zugänge · WN Entrümpelung</title>
+<link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0B1220;color:#E5EDF7;font:15px Inter,system-ui,sans-serif;padding:16px}
+main{max-width:560px;margin:0 auto}a{color:#93C5FD}h1{font:700 20px Montserrat,Inter,sans-serif;margin:8px 0 14px}h2{font:600 16px Inter;margin:0 0 10px}
+.k{background:#111A2E;border:1px solid #1E293B;border-radius:16px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:13px;color:#9FB0C8;margin:10px 0 4px}input,select{width:100%;padding:12px;border-radius:10px;border:1px solid #2A3A55;background:#0B1220;color:#E5EDF7;font:inherit}
+button{padding:11px 14px;border:0;border-radius:10px;background:#2563EB;color:#fff;font:600 14px Inter;cursor:pointer;margin-top:12px}button.g{background:#1E293B}
+.z{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #1E293B}.z:first-child{border-top:0}
+.s{color:#9FB0C8;font-size:12.5px}.m{font-size:13.5px;margin-top:8px;min-height:18px}.ok{color:#86EFAC}.f{color:#FCA5A5}.aus{opacity:.5}
+</style></head><body><main>
+<a href="/team/">← zurück zur App</a>
+<h1>Zugänge</h1>
+<div id="chef" hidden>
+  <div class="k"><h2>Neuer Zugang</h2>
+    <label>Name</label><input id="nn" placeholder="z. B. Ali Yılmaz">
+    <label>Benutzername</label><input id="nl" autocapitalize="none" placeholder="z. B. ali">
+    <label>Start-Passwort (mind. 8 Zeichen)</label><input id="np">
+    <label>Rolle</label><select id="nr"><option value="mitarbeiter">Mitarbeiter</option><option value="chef">Chef</option></select>
+    <button id="nb">Zugang anlegen</button><div class="m" id="nm"></div>
+    <div class="s">Danach dem Mitarbeiter Adresse, Benutzername und Passwort geben. Er meldet sich an und erscheint im Team; dort „Ins Team aufnehmen“ tippen.</div>
+  </div>
+  <div class="k"><h2>Alle Zugänge</h2><div id="li">…</div></div>
+</div>
+<div class="k"><h2>Eigenes Passwort ändern</h2>
+  <label>Altes Passwort</label><input id="pa" type="password" autocomplete="current-password">
+  <label>Neues Passwort (mind. 8 Zeichen)</label><input id="pn" type="password" autocomplete="new-password">
+  <button id="pb">Ändern</button><div class="m" id="pm"></div>
+</div>
+</main>
+<script>
+const H={"Content-Type":"application/json","x-wn":"1"};
+async function api(p,o={}){const r=await fetch("/api/"+p,{...o,headers:H});if(r.status===401){location.href="/anmelden";throw 0}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.fehler||"Fehler");return j}
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const msg=(id,t,ok)=>{const e=document.getElementById(id);e.className="m "+(ok?"ok":"f");e.textContent=t};
+let ich;
+async function liste(){const l=await api("nutzer");document.getElementById("li").innerHTML=l.map(u=>`<div class="z ${u.aktiv?"":"aus"}"><div><b>${esc(u.name)}</b> <span class="s">${esc(u.login)} · ${u.rolle==="chef"?"Chef":"Mitarbeiter"}${u.aktiv?"":" · gesperrt"}</span></div>
+ ${u.id===ich.id?'<span class="s">Sie</span>':`<div><button class="g" data-pw="${u.id}">Passwort</button> <button class="g" data-ak="${u.id}" data-v="${u.aktiv?0:1}">${u.aktiv?"Sperren":"Freigeben"}</button></div>`}</div>`).join("")}
+(async()=>{ich=await api("ich");if(ich.rolle==="chef"){document.getElementById("chef").hidden=false;liste()}})();
+document.addEventListener("click",async e=>{const b=e.target.closest("button");if(!b)return;
+  try{
+    if(b.id==="nb"){await api("nutzer",{method:"POST",body:JSON.stringify({name:nn.value,login:nl.value,pass:np.value,rolle:nr.value})});msg("nm","Zugang angelegt: "+nl.value.trim().toLowerCase(),1);nn.value=nl.value=np.value="";liste()}
+    if(b.dataset.pw){const p=prompt("Neues Passwort (mind. 8 Zeichen):");if(p){await api("nutzer/"+b.dataset.pw,{method:"PATCH",body:JSON.stringify({pass:p})});alert("Passwort geändert.")}}
+    if(b.dataset.ak){await api("nutzer/"+b.dataset.ak,{method:"PATCH",body:JSON.stringify({aktiv:b.dataset.v==="1"})});liste()}
+    if(b.id==="pb"){await api("passwort",{method:"POST",body:JSON.stringify({alt:pa.value,neu:pn.value})});msg("pm","Passwort geändert",1);pa.value=pn.value=""}
+  }catch(x){if(x)(b.id==="pb"?msg("pm",x.message):b.id==="nb"?msg("nm",x.message):alert(x.message))}});
+</script></body></html>

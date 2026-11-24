@@ -29,6 +29,9 @@ JoumHome bleibt unverändert unter `https://gijouma-maker.github.io/joumhome-tes
   - Mitarbeiter-Ansicht: `…/team/?rolle=mitarbeiter`
 - Team-Bereich **mit KI und gemeinsamer Datenbank**: der Claude-Link aus `config.js` (`teamApp`)
 
+## Eigener Server (ohne Claude-Konto)
+Im Ordner `server/` liegt ein kleiner Server (Node.js, ohne Zusatzpakete). Er bringt eigenen Login, eine gemeinsame Datenbank für Chef und Mitarbeiter mit Live-Abgleich, einen Foto-Speicher und alle KI-Funktionen über einen eigenen Anthropic-API-Schlüssel mit. Installation mit einem Befehl: siehe [server/ANLEITUNG.md](server/ANLEITUNG.md).
+
 ## Neu (24.11.2026, Beleg-Scanner, Suche, Sprachen im Team)
 - **Beleg-Scanner wie bei JoumHome**: Kamera oder Galerie, mehrere Seiten für lange Bons, Ränder werden erkannt und der Bon gerade gezogen.
 - **KI sortiert automatisch**: jede Position einzeln, Privates (Zigaretten, Kaugummi …) getrennt, unsichere Positionen markiert, Summenprüfung gegen den Bon-Betrag. Transporter-/Anhängermiete und Deponie werden erkannt, der Beleg wird dem passenden Auftrag zugeordnet (Deponie-Beleg = Entsorgungsnachweis am Auftrag).
