@@ -122,6 +122,7 @@
   var ich = null;
   var bereit = (async function () {
     try { ich = await api("ich"); } catch (e) { return; }
+    window.__wnKiLangsam = ich.kiArt === "lokal"; // eigene KI ohne Grafikkarte: Zusatzschritte sparen
     verbinde();
   })();
   var user = {
@@ -140,7 +141,7 @@
     b.style.cssText = "background:#0B1220;color:#9FB0C8;font:500 12px Inter,system-ui,sans-serif;padding:5px 12px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;border-bottom:1px solid #1E293B";
     var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
     b.innerHTML = "<span>👤 " + esc(ich.name) + "</span>" + (ich.rolle === "chef" ? "<a href='/zugaenge' style='color:#93C5FD'>Zugänge verwalten</a>" : "<a href='/zugaenge' style='color:#93C5FD'>Passwort ändern</a>") +
-      "<a href='#' id='wnAbm' style='color:#93C5FD'>Abmelden</a>" + (!ich.ki && ich.rolle === "chef" ? "<span style='color:#FBBF24'>KI aus – API-Schlüssel in .env eintragen</span>" : "");
+      "<a href='#' id='wnAbm' style='color:#93C5FD'>Abmelden</a>" + (!ich.ki && ich.rolle === "chef" ? "<span style='color:#FBBF24'>KI aus – siehe ANLEITUNG.md</span>" : "");
     document.body.insertBefore(b, document.body.firstChild);
     document.getElementById("wnAbm").onclick = async function (e) { e.preventDefault(); try { await api("logout", { method: "POST" }); } catch (x) {} zurAnmeldung(); };
   });

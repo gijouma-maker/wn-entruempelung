@@ -18,11 +18,17 @@ button{padding:11px 14px;border:0;border-radius:10px;background:#2563EB;color:#f
     <label>Name</label><input id="nn" placeholder="z. B. Ali Yılmaz">
     <label>Benutzername</label><input id="nl" autocapitalize="none" placeholder="z. B. ali">
     <label>Start-Passwort (mind. 8 Zeichen)</label><input id="np">
+    <div id="uw" hidden><label>Daten übernehmen von (aus der Claude-Version)</label><select id="nu"><option value="">– neue Person –</option></select></div>
     <label>Rolle</label><select id="nr"><option value="mitarbeiter">Mitarbeiter</option><option value="chef">Chef</option></select>
     <button id="nb">Zugang anlegen</button><div class="m" id="nm"></div>
     <div class="s">Danach dem Mitarbeiter Adresse, Benutzername und Passwort geben. Er meldet sich an und erscheint im Team; dort „Ins Team aufnehmen“ tippen.</div>
   </div>
   <div class="k"><h2>Alle Zugänge</h2><div id="li">…</div></div>
+  <div class="k"><h2>Daten übernehmen</h2>
+    <div class="s">Aus der Claude-Version: Firmendaten → „Alle Daten exportieren“. Die heruntergeladene Datei hier auswählen. Vorhandene Einträge mit gleicher Nummer werden überschrieben.</div>
+    <label>Export-Datei (WN-Export-….json)</label><input type="file" id="if" accept=".json,application/json">
+    <button id="ib">Daten übernehmen</button><div class="m" id="im"></div>
+  </div>
 </div>
 <div class="k"><h2>Eigenes Passwort ändern</h2>
   <label>Altes Passwort</label><input id="pa" type="password" autocomplete="current-password">
@@ -36,14 +42,18 @@ async function api(p,o={}){const r=await fetch("/api/"+p,{...o,headers:H});if(r.
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const msg=(id,t,ok)=>{const e=document.getElementById(id);e.className="m "+(ok?"ok":"f");e.textContent=t};
 let ich;
-async function liste(){const l=await api("nutzer");document.getElementById("li").innerHTML=l.map(u=>`<div class="z ${u.aktiv?"":"aus"}"><div><b>${esc(u.name)}</b> <span class="s">${esc(u.login)} · ${u.rolle==="chef"?"Chef":"Mitarbeiter"}${u.aktiv?"":" · gesperrt"}</span></div>
+async function frei(){const l=await api("ohnezugang");const s=document.getElementById("nu");s.innerHTML='<option value="">– neue Person –</option>'+l.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");document.getElementById("uw").hidden=!l.length}
+async function liste(){frei();const l=await api("nutzer");document.getElementById("li").innerHTML=l.map(u=>`<div class="z ${u.aktiv?"":"aus"}"><div><b>${esc(u.name)}</b> <span class="s">${esc(u.login)} · ${u.rolle==="chef"?"Chef":"Mitarbeiter"}${u.aktiv?"":" · gesperrt"}</span></div>
  ${u.id===ich.id?'<span class="s">Sie</span>':`<div><button class="g" data-pw="${u.id}">Passwort</button> <button class="g" data-ak="${u.id}" data-v="${u.aktiv?0:1}">${u.aktiv?"Sperren":"Freigeben"}</button></div>`}</div>`).join("")}
 (async()=>{ich=await api("ich");if(ich.rolle==="chef"){document.getElementById("chef").hidden=false;liste()}})();
 document.addEventListener("click",async e=>{const b=e.target.closest("button");if(!b)return;
   try{
-    if(b.id==="nb"){await api("nutzer",{method:"POST",body:JSON.stringify({name:nn.value,login:nl.value,pass:np.value,rolle:nr.value})});msg("nm","Zugang angelegt: "+nl.value.trim().toLowerCase(),1);nn.value=nl.value=np.value="";liste()}
+    if(b.id==="nb"){await api("nutzer",{method:"POST",body:JSON.stringify({name:nn.value,login:nl.value,pass:np.value,rolle:nr.value,uebernehmen:nu.value||undefined})});msg("nm","Zugang angelegt: "+nl.value.trim().toLowerCase(),1);nn.value=nl.value=np.value="";liste()}
     if(b.dataset.pw){const p=prompt("Neues Passwort (mind. 8 Zeichen):");if(p){await api("nutzer/"+b.dataset.pw,{method:"PATCH",body:JSON.stringify({pass:p})});alert("Passwort geändert.")}}
     if(b.dataset.ak){await api("nutzer/"+b.dataset.ak,{method:"PATCH",body:JSON.stringify({aktiv:b.dataset.v==="1"})});liste()}
+    if(b.id==="ib"){const f=document.getElementById("if").files[0];if(!f)throw new Error("Bitte zuerst die Export-Datei auswählen.");if(!confirm("Daten jetzt übernehmen?"))return;msg("im","Wird übernommen … (kann bei vielen Fotos etwas dauern)",1);
+      const r=await fetch("/api/import",{method:"POST",headers:{"Content-Type":"application/json","x-wn":"1"},body:f});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.fehler||"Fehler");
+      msg("im",`Übernommen: ${j.docs} Einträge, ${j.dateien} Dateien. Jetzt für jeden Mitarbeiter oben einen Zugang anlegen und „Daten übernehmen von“ wählen.`,1);liste()}
     if(b.id==="pb"){await api("passwort",{method:"POST",body:JSON.stringify({alt:pa.value,neu:pn.value})});msg("pm","Passwort geändert",1);pa.value=pn.value=""}
-  }catch(x){if(x)(b.id==="pb"?msg("pm",x.message):b.id==="nb"?msg("nm",x.message):alert(x.message))}});
+  }catch(x){if(x)(b.id==="pb"?msg("pm",x.message):b.id==="nb"?msg("nm",x.message):b.id==="ib"?msg("im",x.message):alert(x.message))}});
 </script></body></html>

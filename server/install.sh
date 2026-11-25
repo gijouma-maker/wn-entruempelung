@@ -10,7 +10,16 @@ ZIEL=/opt/wn
 
 echo "== WN Entrümpelung – Einrichtung =="
 read -rp "Ihre Domain (z. B. app.wn-entruempelung.de): " DOMAIN </dev/tty
-read -rp "Anthropic API-Schlüssel (sk-ant-…, kann auch später in $ZIEL/server/.env): " KEY </dev/tty
+echo "KI für Belege, Volumen und Sprache:"
+echo "  1) Eigene KI auf diesem Server – kostenlos, keine Daten nach außen (empfohlen)"
+echo "  2) Claude über Anthropic-API-Schlüssel – genauer und schneller, kostet pro Foto"
+read -rp "Auswahl [1]: " KIWAHL </dev/tty; KIWAHL=${KIWAHL:-1}
+KEY=""; KIART=lokal
+if [ "$KIWAHL" = "2" ]; then KIART=anthropic; read -rp "Anthropic API-Schlüssel (sk-ant-…): " KEY </dev/tty; fi
+RAM_GB=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 / 1024 ))
+if   [ "$RAM_GB" -ge 15 ]; then MODELL=qwen3-vl:8b
+elif [ "$RAM_GB" -ge 7 ];  then MODELL=qwen3-vl:4b
+else MODELL=qwen3-vl:2b; fi
 
 echo "== Pakete installieren =="
 apt-get update -y
@@ -25,6 +34,14 @@ if ! command -v caddy >/dev/null; then
   apt-get update -y && apt-get install -y caddy
 fi
 
+if [ "$KIART" = "lokal" ]; then
+  echo "== Eigene KI installieren (Ollama, Modell $MODELL – Download einige GB) =="
+  command -v ollama >/dev/null || curl -fsSL https://ollama.com/install.sh | sh
+  systemctl enable --now ollama
+  sleep 3
+  ollama pull "$MODELL"
+fi
+
 echo "== App holen =="
 id wn >/dev/null 2>&1 || useradd --system --home "$ZIEL" --shell /usr/sbin/nologin wn
 if [ -d "$ZIEL/.git" ]; then git -C "$ZIEL" pull --ff-only; else git clone "$REPO" "$ZIEL"; fi
@@ -32,6 +49,8 @@ mkdir -p "$ZIEL/server/data"
 if [ ! -f "$ZIEL/server/.env" ]; then
   CODE=$(tr -dc 'A-Z0-9' </dev/urandom | head -c 8)
   cat > "$ZIEL/server/.env" <<EOF
+WN_KI=$KIART
+WN_OLLAMA_MODELL=${MODELL}
 ANTHROPIC_API_KEY=$KEY
 WN_KI_MODELL=claude-sonnet-5-5
 WN_KI_LIMIT_TAG=400
@@ -84,6 +103,7 @@ echo " Fertig!  Kunden-App:  https://$DOMAIN"
 echo "          Team-App:    https://$DOMAIN/team/"
 echo " Beim ersten Öffnen den Chef-Zugang anlegen."
 echo " Einrichtungs-Code:    $CODE"
+echo " KI:                   $([ "$KIART" = lokal ] && echo "eigene KI ($MODELL), kostenlos" || echo "Anthropic-API")"
 echo " Update später:        wn-update"
 echo " Daten & Sicherungen:  $ZIEL/server/data  (täglich, 14 Tage)"
 echo "=============================================================="

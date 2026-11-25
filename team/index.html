@@ -1153,7 +1153,7 @@ function vTeam(){
    <div class="field" style="justify-content:flex-end"><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input id="c_k" type="checkbox" ${f.kleinunternehmer?"checked":""} style="width:20px;height:20px"> Kleinunternehmer (§ 19 UStG)</label></div>
   </div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" data-act="saveFirma">Speichern</button></div>
   <p class="small" style="margin:10px 0 0">Die Webseite steht automatisch am Ende jeder Antwort an Inserenten (Kleinanzeigen, Marktplaats, Facebook), jeder Angebot-Nachricht und jeder Kunden-Info.</p></div>
-  ${firmaExtraHtml()}${rechtCard()}<button class="btn pri big" data-act="saveFirma">Alle Firmendaten speichern</button>${kiCard()}
+  ${firmaExtraHtml()}${rechtCard()}<button class="btn pri big" data-act="saveFirma">Alle Firmendaten speichern</button>${kiCard()}${exportCard()}
   ${adFooterCard()}
   <div class="card"><h3>Kunden-Ansicht</h3><p class="small" style="margin:6px 0 0">Mit dem Schalter oben rechts (Chef/Mitarbeiter/Kunde) können Sie jede Ansicht ausprobieren. Kunden ohne Konto können in Claude-Apps keine Daten speichern. Deshalb schickt die Kunden-Ansicht die Anfrage mit Fotos per WhatsApp an Ihre Firmennummer. Sie übernehmen sie dann mit einem Klick als Ticket.</p></div>`;
 }
@@ -2262,7 +2262,7 @@ async function docFix(file){
     const small=await compress(file,1600); const img=await loadImg(small);
     const W=img.width,H=img.height; let loc=localQuad(img);
     let ai=null;
-    if(st.sample){ const r=await aiJson(`Auf dem Foto ist ein Dokument (Kassenbon, Rechnung, Vertragsseite, Brief oder Zähler). Es kann schief, seitlich oder auf dem Kopf liegen.
+    if(st.sample&&!window.__wnKiLangsam){ const r=await aiJson(`Auf dem Foto ist ein Dokument (Kassenbon, Rechnung, Vertragsseite, Brief oder Zähler). Es kann schief, seitlich oder auf dem Kopf liegen.
 Gib die 4 Ecken des Dokuments als Bruchteile der Bildbreite/-höhe (0 bis 1, Ursprung oben links im Bild) an – und zwar in der Reihenfolge, wie man das Dokument aufrecht liest: [oben-links, oben-rechts, unten-rechts, unten-links] des TEXTES. Liegt das Dokument z. B. auf dem Kopf, ist "oben-links" des Textes im Bild unten rechts.
 Antworte nur mit JSON: {"dokument":true oder false,"ecken":[[x,y],[x,y],[x,y],[x,y]],"drehung":0|90|180|270 (Grad im Uhrzeigersinn, um die der Text gedreht ist)}`,[small]); ai=r.v||null; }
     const ok=e=>Array.isArray(e)&&e.length===4&&e.every(p=>Array.isArray(p)&&p.length===2&&p.every(n=>typeof n==="number"&&n>=-0.05&&n<=1.05));
@@ -2496,9 +2496,29 @@ async function uiLoadShared(code){if(!st.db||code==="de")return;try{await new Pr
   mo.observe(document.body,{childList:true,subtree:true,characterData:true});
   try{const c=uiLang();st.uiExtra={[c]:JSON.parse(localStorage.getItem("wn_ui_x_"+c)||"{}")}}catch(e){}})();
 
+
+/* ---------- Umzug auf eigenen Server: alle Daten exportieren ---------- */
+const EXPORT_COLS=["tickets","belege","einnahmen","personen","einstellungen","team","urlaub","urlaubok","status","profil","vbest","zeiten","krank","vertraege"];
+function colOnce(c){return new Promise(ok=>{let fertig=false,un=null;const ende=o=>{if(fertig)return;fertig=true;ok(o);setTimeout(()=>{try{typeof un==="function"&&un()}catch(e){}},0)};
+  try{un=st.db.collection(c).onSnapshot(s=>{const o={};s.docs.forEach(d=>{o[d.id]=d.data()});ende(o)},()=>ende({}))}catch(e){ende({})}setTimeout(()=>ende({}),15000)})}
+function idKand(v,k,set){if(typeof v==="string"){if(/id|foto|bild|logo|datei|scan|sig|unterschr|anhang|doc|pdf|nachweis/i.test(k||"")&&/^[A-Za-z0-9_-]{4,120}$/.test(v)&&!/^\d+$/.test(v))set.add(v);return}
+  if(Array.isArray(v))v.forEach(x=>idKand(x,k,set));else if(v&&typeof v==="object")for(const[kk,vv]of Object.entries(v))idKand(vv,kk,set)}
+const b64Blob=b=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=no;r.readAsDataURL(b)});
+function exportCard(){if(st.realRole!=="chef"||window.__wnServer||window.__wnGithub)return"";
+  return`<div class="card"><h3>Umzug auf eigenen Server</h3><p class="small">Lädt alle Aufträge, Belege, Einnahmen, Team-Daten, Einstellungen und Fotos als eine Datei herunter. Auf dem eigenen Server unter „Zugänge verwalten → Daten übernehmen“ einlesen.</p><div id="exSt" class="small"></div><button class="btn" data-act="datenExport">Alle Daten exportieren</button></div>`}
+async function datenExport(){const S=t=>{const e=$("#exSt");if(e)e.textContent=t};
+  S("Daten werden gesammelt …");const daten={};for(const c of EXPORT_COLS)daten[c]=await colOnce(c);
+  const ids=new Set();idKand(daten,"",ids);const liste=[...ids],dateien={};let n=0;
+  for(let i=0;i<liste.length;i+=6){await Promise.all(liste.slice(i,i+6).map(async id=>{try{const r=await fetch(blob(id));if(!r.ok)return;const ct=r.headers.get("content-type")||"";if(/text\/html|json/.test(ct))return;const b=await r.blob();if(!b.size)return;dateien[id]={typ:b.type||ct||"application/octet-stream",data:await b64Blob(b)};n++}catch(e){}}));S(`Fotos/Dateien: ${n} …`)}
+  const docs=Object.values(daten).reduce((a,o)=>a+Object.keys(o).length,0);
+  const datei=new Blob([JSON.stringify({format:"wn-export",version:1,erstellt:new Date().toISOString(),chefId:st.me,daten,dateien})],{type:"application/json"});
+  const name=`WN-Export-${new Date().toISOString().slice(0,10)}.json`;
+  if(st.dl)await st.dl.save({filename:name,data:datei});else{const a=document.createElement("a");a.href=URL.createObjectURL(datei);a.download=name;a.click()}
+  S(`Fertig: ${docs} Einträge, ${n} Dateien (${(datei.size/1048576).toFixed(1)} MB).`);toast("Export erstellt")}
 /* ---------- Klicks der neuen Funktionen ---------- */
 async function neuAct(a,el,id){
   switch(a){
+    case"datenExport":await datenExport();return true;
     case"kiVol":await kiVol(id);return true;
     case"kalk":kalkDialog(id,el.dataset.ki==="1");return true;
     case"kalkSave":await kalkSave(id);return true;

@@ -25,6 +25,9 @@ const CFG = {
   port: +process.env.PORT || 8080,
   host: process.env.HOST || "127.0.0.1",
   daten: path.resolve(HIER, process.env.WN_DATEN || "data"),
+  kiArt: (process.env.WN_KI || (process.env.ANTHROPIC_API_KEY ? "anthropic" : "lokal")).toLowerCase(), // lokal | anthropic | aus
+  ollamaUrl: process.env.WN_OLLAMA_URL || "http://127.0.0.1:11434",
+  ollamaModell: process.env.WN_OLLAMA_MODELL || "qwen3-vl:4b",
   kiKey: process.env.ANTHROPIC_API_KEY || "",
   kiModell: process.env.WN_KI_MODELL || "claude-sonnet-5-5",
   kiUrl: process.env.WN_KI_URL || "https://api.anthropic.com/v1/messages",
@@ -134,8 +137,42 @@ function datei(res, f, extra = {}) {
 }
 function mergeTief(a, b) { return Object.assign({}, a || {}, b || {}); } // wie Firestore update(): oberste Ebene ersetzen
 
-/* ---------- KI (Claude über Ihren API-Schlüssel) ---------- */
+/* ---------- KI ----------
+   lokal:     eigene KI auf dem eigenen Rechner/Server über Ollama (kostenlos, keine Daten nach außen)
+   anthropic: Claude über Ihren API-Schlüssel (kostet pro Anfrage) */
+const kiAn = () => CFG.kiArt === "lokal" || (CFG.kiArt === "anthropic" && !!CFG.kiKey);
+const warteschlange = []; let kiLaeuft = false;
+function kiLokal(job) { // eine Anfrage nach der anderen, Fotos vor Übersetzungen
+  return new Promise((ok, no) => { warteschlange.push({ job, ok, no, prio: job.bilder?.length ? 0 : 1 }); warteschlange.sort((a, b) => a.prio - b.prio); naechste(); });
+}
+async function naechste() {
+  if (kiLaeuft || !warteschlange.length) return;
+  kiLaeuft = true; const w = warteschlange.shift();
+  try { w.ok(await ollama(w.job)); } catch (e) { w.no(e); } finally { kiLaeuft = false; naechste(); }
+}
+async function ollama({ prompt, bilder, json: alsJson }) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 6 * 60e3);
+  try {
+    const r = await fetch(CFG.ollamaUrl.replace(/\/$/, "") + "/api/chat", {
+      method: "POST", signal: ctl.signal, headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: CFG.ollamaModell, stream: false, keep_alive: "30m", options: { temperature: 0.1, num_ctx: 8192 },
+        ...(alsJson ? { format: "json" } : {}),
+        messages: [{ role: "user", content: String(prompt || "") + (alsJson ? "\n\nAntworte ausschließlich mit gültigem JSON." : ""), images: (bilder || []).slice(0, 4).map(b => b.data).filter(Boolean) }],
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error("Eigene KI: " + (j.error || r.status)), { status: 502, code: "ki_fehler" });
+    return String(j.message?.content || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  } catch (e) {
+    if (e.name === "AbortError") throw Object.assign(new Error("Eigene KI hat zu lange gebraucht."), { status: 504, code: "ki_fehler" });
+    if (e.cause?.code === "ECONNREFUSED") throw Object.assign(new Error("Eigene KI (Ollama) läuft nicht."), { status: 503, code: "no_key" });
+    throw e;
+  } finally { clearTimeout(t); }
+}
 async function kiAnfrage(u, { prompt, bilder, json: alsJson }) {
+  if (CFG.kiArt === "aus") throw Object.assign(new Error("KI ist ausgeschaltet."), { status: 503, code: "no_key" });
+  if (CFG.kiArt === "lokal") return kiLokal({ prompt, bilder, json: alsJson });
   if (!CFG.kiKey) throw Object.assign(new Error("KI ist auf dem Server noch nicht eingerichtet (ANTHROPIC_API_KEY fehlt in .env)."), { status: 503, code: "no_key" });
   const tag = jetzt().slice(0, 10);
   if ((Q.kiGet.get(u.id, tag)?.anzahl || 0) >= CFG.kiLimit) throw Object.assign(new Error("Tageslimit für KI erreicht."), { status: 429, code: "rate_limited" });
@@ -155,13 +192,13 @@ async function kiAnfrage(u, { prompt, bilder, json: alsJson }) {
 }
 
 /* ---------- API ---------- */
-const COL_OK = /^[a-z0-9_]{1,40}$/i, ID_OK = /^[A-Za-z0-9_\-.:@]{1,120}$/;
+const COL_OK = /^[a-z0-9_]{1,40}$/i, ID_OK = /^[A-Za-z0-9_\-.:@]{1,120}$/, DATEI_OK = /^[A-Za-z0-9_\-]{1,120}$/;
 async function api(req, res, url) {
   const p = url.pathname.replace(/^\/api\//, "").split("/").map(decodeURIComponent);
   const ip = req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.socket.remoteAddress;
 
   /* Anmelden / Ersteinrichtung (ohne Sitzung) */
-  if (p[0] === "status" && req.method === "GET") return json(res, 200, { eingerichtet: Q.nCount.get().n > 0, setupCode: !!CFG.setupCode, ki: !!CFG.kiKey });
+  if (p[0] === "status" && req.method === "GET") return json(res, 200, { eingerichtet: Q.nCount.get().n > 0, setupCode: !!CFG.setupCode, ki: kiAn() });
   if (p[0] === "setup" && req.method === "POST") {
     if (Q.nCount.get().n > 0) return json(res, 409, { fehler: "Es gibt schon einen Chef-Zugang." });
     const d = await bodyJson(req, 1e5);
@@ -183,7 +220,7 @@ async function api(req, res, url) {
   if (req.method !== "GET" && req.headers["x-wn"] !== "1") return json(res, 403, { fehler: "Ungültige Anfrage." }); // Schutz gegen fremde Seiten (CSRF)
 
   if (p[0] === "logout") { Q.sDel.run(u.token); res.setHeader("Set-Cookie", "wn_sitzung=; Path=/; Max-Age=0"); return json(res, 200, { ok: true }); }
-  if (p[0] === "ich") return json(res, 200, { id: u.id, name: u.name, rolle: u.rolle, login: u.login, ki: !!CFG.kiKey });
+  if (p[0] === "ich") return json(res, 200, { id: u.id, name: u.name, rolle: u.rolle, login: u.login, ki: kiAn(), kiArt: CFG.kiArt });
   if (p[0] === "passwort" && req.method === "POST") {
     const d = await bodyJson(req, 1e5); const n = Q.nGet.get(u.id);
     if (!pruefPw(d.alt, n.hash)) return json(res, 403, { fehler: "Altes Passwort stimmt nicht." });
@@ -205,7 +242,9 @@ async function api(req, res, url) {
       if (!/^[a-z0-9._@-]{3,40}$/.test(login)) return json(res, 400, { fehler: "Benutzername: 3–40 Zeichen, nur Buchstaben, Zahlen, Punkt, Strich." });
       if (String(d.pass || "").length < 8) return json(res, 400, { fehler: "Passwort: mindestens 8 Zeichen." });
       if (Q.nLogin.get(login)) return json(res, 409, { fehler: "Diesen Benutzernamen gibt es schon." });
-      const id = neueId("u_"); Q.nNew.run(id, login, String(d.name || login).trim(), d.rolle === "chef" ? "chef" : "mitarbeiter", hashPw(d.pass), jetzt());
+      let id = neueId("u_");
+      if (d.uebernehmen) { if (!ID_OK.test(d.uebernehmen) || Q.nGet.get(d.uebernehmen)) return json(res, 400, { fehler: "Diese Person hat schon einen Zugang." }); id = d.uebernehmen; }
+      Q.nNew.run(id, login, String(d.name || login).trim(), d.rolle === "chef" ? "chef" : "mitarbeiter", hashPw(d.pass), jetzt());
       return json(res, 200, { ok: true, id });
     }
     if (req.method === "PATCH" && p[1]) {
@@ -217,6 +256,40 @@ async function api(req, res, url) {
       if (typeof d.aktiv === "boolean") { db.prepare("UPDATE nutzer SET aktiv=? WHERE id=?").run(d.aktiv ? 1 : 0, p[1]); if (!d.aktiv) Q.sDelUid.run(p[1]); }
       return json(res, 200, { ok: true });
     }
+  }
+
+  /* Personen aus übernommenen Daten, die noch keinen Zugang haben */
+  if (p[0] === "ohnezugang" && req.method === "GET") {
+    if (u.rolle !== "chef") return json(res, 403, { fehler: "Nur für den Chef." });
+    const l = []; for (const z of Q.docAll.all("personen")) if (!Q.nGet.get(z.id)) { const d = JSON.parse(z.data); l.push({ id: z.id, name: d.name || d.anzeige || z.id }); }
+    return json(res, 200, l);
+  }
+
+  /* Datenübernahme aus der Claude-Version (Export-Datei) */
+  if (p[0] === "import" && req.method === "POST") {
+    if (u.rolle !== "chef") return json(res, 403, { fehler: "Nur für den Chef." });
+    const d = await bodyJson(req, 600e6);
+    if (d.format !== "wn-export" || !d.daten) return json(res, 400, { fehler: "Das ist keine WN-Export-Datei." });
+    let docs = 0, dateien = 0;
+    db.exec("BEGIN");
+    try {
+      if (d.chefId && d.chefId !== u.id && ID_OK.test(d.chefId) && !Q.nGet.get(d.chefId)) { // eigener Chef-Zugang übernimmt die alte Chef-ID
+        db.prepare("UPDATE nutzer SET id=? WHERE id=?").run(d.chefId, u.id);
+        db.prepare("UPDATE sitzungen SET uid=? WHERE uid=?").run(d.chefId, u.id);
+        for (const c of ["personen", "profil", "status", "zeiten", "vbest"]) Q.docDel.run(c, u.id);
+      }
+      for (const [col, o] of Object.entries(d.daten)) {
+        if (!COL_OK.test(col) || !o || typeof o !== "object") continue;
+        for (const [id, data] of Object.entries(o)) if (ID_OK.test(id) && data && typeof data === "object") { Q.docSet.run(col, id, JSON.stringify(data), jetzt(), "import"); docs++; }
+      }
+      db.exec("COMMIT");
+    } catch (e) { db.exec("ROLLBACK"); throw e; }
+    for (const [id, f] of Object.entries(d.dateien || {})) {
+      if (!DATEI_OK.test(id) || !f?.data || Q.fGet.get(id)) continue;
+      const b = Buffer.from(f.data, "base64"); fs.writeFileSync(path.join(CFG.daten, "dateien", id), b);
+      Q.fNew.run(id, String(f.typ || "application/octet-stream").slice(0, 100), b.length, "import", jetzt()); dateien++;
+    }
+    return json(res, 200, { ok: true, docs, dateien });
   }
 
   /* Live-Änderungen */
@@ -260,7 +333,7 @@ async function api(req, res, url) {
       return json(res, 200, { id });
     }
     if (req.method === "GET" && p[1]) {
-      const f = Q.fGet.get(p[1]); if (!f) return json(res, 404, { fehler: "Nicht gefunden" });
+      const f = DATEI_OK.test(p[1]) && Q.fGet.get(p[1]); if (!f) return json(res, 404, { fehler: "Nicht gefunden" });
       return datei(res, path.join(CFG.daten, "dateien", f.id), { "Content-Type": f.typ, "Cache-Control": "private, max-age=31536000, immutable" });
     }
   }
@@ -312,6 +385,6 @@ function sichern() {
 setInterval(sichern, 6 * 3600e3); setTimeout(sichern, 5e3);
 
 server.listen(CFG.port, CFG.host, () => {
-  console.log(`WN-Server läuft auf http://${CFG.host}:${CFG.port}  ·  KI: ${CFG.kiKey ? "an (" + CFG.kiModell + ")" : "AUS – ANTHROPIC_API_KEY in .env eintragen"}`);
+  console.log(`WN-Server läuft auf http://${CFG.host}:${CFG.port}  ·  KI: ${CFG.kiArt === "lokal" ? "eigene KI (" + CFG.ollamaModell + " über " + CFG.ollamaUrl + ")" : kiAn() ? "Anthropic (" + CFG.kiModell + ")" : "AUS"}`);
   if (!Q.nCount.get().n) console.log("Noch kein Zugang – bitte /anmelden öffnen und den Chef-Zugang anlegen" + (CFG.setupCode ? " (Einrichtungs-Code aus .env)." : "."));
 });

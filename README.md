@@ -30,7 +30,7 @@ JoumHome bleibt unverändert unter `https://gijouma-maker.github.io/joumhome-tes
 - Team-Bereich **mit KI und gemeinsamer Datenbank**: der Claude-Link aus `config.js` (`teamApp`)
 
 ## Eigener Server (ohne Claude-Konto)
-Im Ordner `server/` liegt ein kleiner Server (Node.js, ohne Zusatzpakete). Er bringt eigenen Login, eine gemeinsame Datenbank für Chef und Mitarbeiter mit Live-Abgleich, einen Foto-Speicher und alle KI-Funktionen über einen eigenen Anthropic-API-Schlüssel mit. Installation mit einem Befehl: siehe [server/ANLEITUNG.md](server/ANLEITUNG.md).
+Im Ordner `server/` liegt ein kleiner Server (Node.js, ohne Zusatzpakete). Er bringt eigenen Login, eine gemeinsame Datenbank für Chef und Mitarbeiter mit Live-Abgleich und einen Foto-Speicher mit. Die KI läuft als **eigene KI auf dem Server** (Qwen3-VL über Ollama), ohne Kosten pro Foto. Wahlweise geht auch Claude über einen API-Schlüssel. Alle Daten aus der Claude-Version lassen sich mit einer Export-Datei übernehmen. Installation mit einem Befehl: siehe [server/ANLEITUNG.md](server/ANLEITUNG.md).
 
 ## Neu (24.11.2026, Beleg-Scanner, Suche, Sprachen im Team)
 - **Beleg-Scanner wie bei JoumHome**: Kamera oder Galerie, mehrere Seiten für lange Bons, Ränder werden erkannt und der Bon gerade gezogen.
