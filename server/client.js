@@ -1,6 +1,6 @@
-/* WN Team-Bereich – Server-Modus
-   Wird nur vom eigenen WN-Server ausgeliefert (/team/wn-server.js). Verbindet die Team-App mit
-   der Server-Datenbank, dem Foto-Speicher, der KI (über den API-Schlüssel des Servers) und dem Mikrofon. */
+/* Server-Modus (WN Entrümpelung, JoumHome …)
+   Wird nur vom eigenen Server ausgeliefert (wn-server.js / server-modus.js). Verbindet die App mit
+   der Server-Datenbank, dem Foto-Speicher, der KI des Servers und dem Mikrofon. Auf GitHub Pages fehlt die Datei → nichts passiert. */
 (function () {
   if (window.claude && window.claude.use) return;
   var H = { "Content-Type": "application/json", "x-wn": "1" };
@@ -35,8 +35,9 @@
   function ref(c, id) {
     return {
       id: id,
-      set: async function (d) { setzeLokal(c, id, cl(d) || {}); await schreib("PUT", c, id, cl(d) || {}); },
-      update: async function (d) { setzeLokal(c, id, Object.assign({}, aktuell(c, id) || {}, cl(d))); await schreib("PATCH", c, id, cl(d)); },
+      toString: function () { return c + "/" + id; },
+      set: async function (d, opt) { if (opt && opt.merge) return this.update(d); setzeLokal(c, id, cl(d) || {}); await schreib("PUT", c, id, cl(d) || {}); },
+      update: async function (d) { var neu = cl(aktuell(c, id) || {}); Object.keys(d || {}).forEach(function (k) { var v = cl(d[k]); if (k.indexOf(".") < 0) { neu[k] = v; return; } var ks = k.split("."), o = neu; for (var i = 0; i < ks.length - 1; i++) { if (!o[ks[i]] || typeof o[ks[i]] !== "object") o[ks[i]] = {}; o = o[ks[i]]; } o[ks[ks.length - 1]] = v; }); setzeLokal(c, id, neu); await schreib("PATCH", c, id, cl(d)); },
       delete: async function () { setzeLokal(c, id, null); await schreib("DELETE", c, id); },
       get: async function () { await ladeDoc(c, id); var v = docs[c + "/" + id]; return { exists: !!v, id: id, data: function () { return cl(v || {}); } }; },
       onSnapshot: function (cb, err) {
@@ -51,15 +52,16 @@
     collection: function (c) {
       return {
         doc: function (id) { return ref(c, id || nid()); },
+        get: async function () { await ladeCol(c); var o = cols[c] || {}, ids = Object.keys(o); return { docs: ids.map(function (id) { return { id: id, exists: true, data: function () { return cl(o[id]); } }; }), size: ids.length, empty: !ids.length }; },
         onSnapshot: function (cb, err) {
-          var s = { f: function () { var o = cols[c] || {}; cb({ docs: Object.keys(o).map(function (id) { return { id: id, data: function () { return cl(o[id]); } }; }), metadata: { fromCache: false } }); }, err: err };
+          var s = { f: function () { var o = cols[c] || {}; var ids = Object.keys(o); cb({ docs: ids.map(function (id) { return { id: id, exists: true, data: function () { return cl(o[id]); } }; }), size: ids.length, empty: !ids.length, metadata: { fromCache: false } }); }, err: err };
           (colSubs[c] = colSubs[c] || []).push(s);
           if (cols[c]) setTimeout(s.f, 0); else ladeCol(c);
           return function () { colSubs[c] = colSubs[c].filter(function (x) { return x !== s; }); };
         }
       };
     },
-    doc: function (p) { var a = p.split("/"); return ref(a[0], a[1]); }
+    doc: function (p) { var i = p.indexOf("/"); return ref(p.slice(0, i), p.slice(i + 1)); }
   };
   var es, warOffen = false;
   function verbinde() {
@@ -70,7 +72,10 @@
 
   /* ---------- Dateien ---------- */
   window.__wnBlob = function (id) { return id ? "/api/datei/" + encodeURIComponent(id) : ""; };
-  var assets = { upload: async function (b) { return await api("datei", { method: "POST", body: b, headers: { "Content-Type": (b && b.type) || "application/octet-stream" } }); } };
+  window.__jhAsset = function (id) { if (!id) return ""; if (/^(blob:|data:|https?:|\/)/.test(id)) return id; return "/api/datei/" + encodeURIComponent(id); };
+  async function hochladen(b, wunschId) { return await api("datei" + (wunschId ? "?id=" + encodeURIComponent(wunschId) : ""), { method: "POST", body: b, headers: { "Content-Type": (b && b.type) || "application/octet-stream" } }); }
+  var assets = { upload: function (b) { return hochladen(b); }, write: function (b) { return hochladen(b); },
+    delete: async function (id) { try { await api("datei/" + encodeURIComponent(id), { method: "DELETE" }); } catch (e) {} return true; } };
   var downloads = { save: async function (o) { var d = o.data instanceof Blob ? o.data : new Blob([o.data]); var a = document.createElement("a"); a.href = URL.createObjectURL(d); a.download = o.filename || "download"; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000); } };
 
   /* ---------- KI ---------- */
@@ -86,11 +91,13 @@
   async function frage(prompt, opts, alsJson) {
     var bilder = [];
     for (var i of ((opts && opts.images) || [])) { var d = await bildDaten(i); if (d) bilder.push(d); }
-    return api("ki", { method: "POST", body: JSON.stringify({ prompt: String(prompt), bilder: bilder, json: !!alsJson }) });
+    var nachr = Array.isArray(prompt) ? prompt : null;
+    return api("ki", { method: "POST", body: JSON.stringify({ prompt: nachr ? "" : String(prompt), nachrichten: nachr, bilder: bilder, json: !!alsJson }) });
   }
   function leseJson(t) { t = String(t || "").replace(/```(?:json)?/g, "").trim(); try { return JSON.parse(t); } catch (e) {} var a = t.search(/[\[{]/), b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]")); if (a >= 0 && b > a) return JSON.parse(t.slice(a, b + 1)); throw new Error("KI-Antwort unlesbar"); }
-  var sample = async function (prompt, opts) { var r = await frage(prompt, opts, false); return { text: r.text }; };
+  var sample = async function (prompt, opts) { var r = await frage(prompt, opts, false); if (opts && typeof opts.onText === "function") { try { opts.onText({ text: r.text }); } catch (e) {} } return { text: r.text }; };
   sample.json = async function (prompt, opts) { var r = await frage(prompt, opts, true); return leseJson(r.text); };
+  sample.limits = async function () { return { images: { maxCount: window.__wnKiLangsam ? 4 : 8 } }; };
 
   /* ---------- Mikrofon (Spracherkennung des Browsers) ---------- */
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition, dictation = null;
@@ -99,6 +106,7 @@
     var cbP = [], cbF = [], cbS = [], rec = null;
     dictation = {
       onPartial: function (f) { cbP.push(f); }, onFinal: function (f) { cbF.push(f); }, onState: function (f) { cbS.push(f); },
+      get active() { return !!rec; },
       stop: async function () { if (rec) rec.stop(); },
       start: function () {
         return new Promise(function (ok, no) {
@@ -126,22 +134,48 @@
     verbinde();
   })();
   var user = {
-    isOwner: async function () { await bereit; return !!ich && ich.rolle === "chef"; },
-    canEdit: async function () { await bereit; return !!ich; },
+    isOwner: async function () { await bereit; return !!ich && ich.rolle === "owner"; },
+    canEdit: async function () { await bereit; return !!ich && (ich.rolle === "owner" || ich.rolle === "admin"); },
     id: async function () { await bereit; return ich && ich.id; },
-    profiles: async function (ids) { return api("profile", { method: "POST", body: JSON.stringify({ ids: ids }) }); }
+    profiles: async function (ids) { return api("profile", { method: "POST", body: JSON.stringify({ ids: ids }) }); },
+    search: async function (q) { return api("suche", { method: "POST", body: JSON.stringify({ q: q || "" }) }); }
   };
   var caps = { db: db, user: user, assets: assets, downloads: downloads, sample: sample, dictation: dictation };
   window.claude = { use: async function (name) { await bereit; if (name === "sample" && ich && !ich.ki) return null; return Object.prototype.hasOwnProperty.call(caps, name) ? caps[name] : null; } };
   window.__wnServer = true;
+
+  /* ---------- Umzug: ZIP aus der Claude-Version von JoumHome einlesen ---------- */
+  function ladeZip() { return window.JSZip ? Promise.resolve() : new Promise(function (ok, no) { var s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"; s.onload = ok; s.onerror = function () { no(new Error("ZIP-Werkzeug konnte nicht geladen werden")); }; document.head.appendChild(s); }); }
+  window.JH = {
+    server: true,
+    importieren: async function (datei) {
+      if (!datei) throw new Error("Bitte die Umzug-Datei (ZIP) auswählen.");
+      if (!ich || ich.rolle !== "owner") throw new Error("Nur der Inhaber kann Daten übernehmen.");
+      await ladeZip();
+      var zip = await window.JSZip.loadAsync(datei), dj = zip.file("daten.json");
+      if (!dj) throw new Error("Das ist keine Umzug-Datei (daten.json fehlt).");
+      var d = JSON.parse(await dj.async("string")), daten = {}, n = 0;
+      Object.keys(d.daten || {}).forEach(function (c) { daten[c] = {}; (d.daten[c] || []).forEach(function (x) { if (x && x.id) { var y = Object.assign({}, x); delete y.id; daten[c][x.id] = y; n++; } }); });
+      daten.config = daten.config || {}; Object.keys(d.config || {}).forEach(function (k) { if (d.config[k] && typeof d.config[k] === "object") { daten.config[k] = d.config[k]; n++; } });
+      var dateien = 0, fs = zip.file(/^dateien\//);
+      for (var i = 0; i < fs.length; i++) {
+        var id = decodeURIComponent(fs[i].name.slice(8)); if (!/^[A-Za-z0-9_\-]{1,120}$/.test(id)) continue;
+        var typ = (d.dateien && d.dateien[id] && (d.dateien[id].typ || d.dateien[id].type)) || "application/octet-stream";
+        try { await hochladen(new Blob([await fs[i].async("arraybuffer")], { type: typ }), id); dateien++; } catch (e) { console.warn("Datei", id, e); }
+      }
+      await api("import", { method: "POST", body: JSON.stringify({ format: "wn-export", daten: daten }) });
+      setTimeout(function () { location.reload(); }, 2500);
+      return { eintraege: n, dateien: dateien };
+    }
+  };
 
   document.addEventListener("DOMContentLoaded", async function () {
     await bereit; if (!ich) return;
     var b = document.createElement("div"); b.className = "no-ui"; b.id = "wnSrvBar";
     b.style.cssText = "background:#0B1220;color:#9FB0C8;font:500 12px Inter,system-ui,sans-serif;padding:5px 12px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;border-bottom:1px solid #1E293B";
     var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
-    b.innerHTML = "<span>👤 " + esc(ich.name) + "</span>" + (ich.rolle === "chef" ? "<a href='/zugaenge' style='color:#93C5FD'>Zugänge verwalten</a>" : "<a href='/zugaenge' style='color:#93C5FD'>Passwort ändern</a>") +
-      "<a href='#' id='wnAbm' style='color:#93C5FD'>Abmelden</a>" + (!ich.ki && ich.rolle === "chef" ? "<span style='color:#FBBF24'>KI aus – siehe ANLEITUNG.md</span>" : "");
+    b.innerHTML = "<span>👤 " + esc(ich.name) + "</span>" + "<span>" + esc(ich.rolleName || "") + "</span>" + (ich.rolle === "owner" ? "<a href='/zugaenge' style='color:#93C5FD'>Zugänge verwalten</a>" : "<a href='/zugaenge' style='color:#93C5FD'>Passwort ändern</a>") +
+      "<a href='#' id='wnAbm' style='color:#93C5FD'>Abmelden</a>" + (!ich.ki && ich.rolle === "owner" ? "<span style='color:#FBBF24'>KI aus – siehe ANLEITUNG.md</span>" : "");
     document.body.insertBefore(b, document.body.firstChild);
     document.getElementById("wnAbm").onclick = async function (e) { e.preventDefault(); try { await api("logout", { method: "POST" }); } catch (x) {} zurAnmeldung(); };
   });

@@ -19,6 +19,9 @@ Korrekturen von Hand merkt sich die App (privat/betrieblich). So wird die Erkenn
 
 Wechseln lässt sich jederzeit in der Datei `/opt/wn/server/.env` (`WN_KI=lokal` oder `WN_KI=anthropic`), danach `systemctl restart wn` ausführen.
 
+## WN und JoumHome auf einem Server
+Der Server-Teil ist bei beiden Apps gleich. Einfach erst das WN-Skript und danach das JoumHome-Skript ausführen (siehe `server/ANLEITUNG.md` bei JoumHome). Jede App bekommt ihre eigene Domain. WN läuft intern auf Port 8080, JoumHome auf 8081. **Beide nutzen dieselbe eigene KI**, egal ob auf dem Server oder auf einem Büro-PC mit Grafikkarte.
+
 ## Was Sie brauchen
 - **Einen V-Server** mit Ubuntu 24.04, z. B. netcup in Nürnberg. Für die eigene KI am besten **8 GB RAM oder mehr** (z. B. netcup VPS 1000).
 - **Eine Domain oder Subdomain**, z. B. `app.wn-entruempelung.de`, mit A-Record auf die IP des Servers.
@@ -44,6 +47,7 @@ Danach nur noch mit dem eigenen Server arbeiten.
 - **Neuer Mitarbeiter:** Unter „Zugänge verwalten“ einen Zugang anlegen. Er meldet sich an und erscheint im Team. Dort dann „Ins Team aufnehmen“ tippen.
 - **Mitarbeiter gekündigt?** Unter „Zugänge verwalten“ auf **Sperren** tippen. Der Zugang ist dann sofort abgemeldet.
 - **Neue Version einspielen:** Auf dem Server `wn-update` eingeben.
+- **Zugänge verwalten** (Leiste ganz oben, nur Chef): Mitarbeiter anlegen, Passwort zurücksetzen, sperren.
 - **Sicherung:** Die Datenbank wird täglich nach `/opt/wn/server/data/sicherung/` gesichert und 14 Tage aufbewahrt. Fotos liegen in `/opt/wn/server/data/dateien/`. Zusätzlich die Backup-Funktion des Hosters einschalten.
 
 ## Gut zu wissen

@@ -1,0 +1,137 @@
+{
+ "name": "WN Entrümpelung",
+ "start": "/team/",
+ "logo": "/logo-mark.svg",
+ "rollen": {
+  "owner": "Chef",
+  "admin": "Mitarbeiter",
+  "interact": "Kunde"
+ },
+ "personen": [
+  {
+   "col": "personen",
+   "id": "$id",
+   "name": "name",
+   "rolle": "admin"
+  }
+ ],
+ "eigeneDokumente": [
+  "personen",
+  "profil",
+  "status",
+  "zeiten",
+  "vbest"
+ ],
+ "rechte": [
+  {
+   "path": "tickets",
+   "read": "admin",
+   "write": "admin"
+  },
+  {
+   "path": "belege",
+   "read": "admin",
+   "write": "admin"
+  },
+  {
+   "path": "einnahmen",
+   "read": "admin",
+   "write": "admin"
+  },
+  {
+   "path": "personen",
+   "read": "admin",
+   "write": "admin"
+  },
+  {
+   "path": "einstellungen",
+   "read": "view",
+   "write": "owner"
+  },
+  {
+   "path": "team",
+   "read": "admin",
+   "write": "owner"
+  },
+  {
+   "path": "profil",
+   "read": "owner",
+   "write": "owner"
+  },
+  {
+   "path": "profil/{self}",
+   "read": "interact",
+   "write": "interact"
+  },
+  {
+   "path": "vertraege",
+   "read": "owner",
+   "write": "owner"
+  },
+  {
+   "path": "vertraege/{self}",
+   "read": "interact",
+   "write": "owner"
+  },
+  {
+   "path": "vbest",
+   "read": "owner",
+   "write": "owner"
+  },
+  {
+   "path": "vbest/{self}",
+   "read": "interact",
+   "write": "interact"
+  },
+  {
+   "path": "zeiten",
+   "read": "owner",
+   "write": "owner"
+  },
+  {
+   "path": "zeiten/{self}",
+   "read": "interact",
+   "write": "interact"
+  },
+  {
+   "path": "urlaub",
+   "read": "admin",
+   "write": "owner"
+  },
+  {
+   "path": "urlaub/{self}",
+   "read": "interact",
+   "write": "interact"
+  },
+  {
+   "path": "urlaubok",
+   "read": "admin",
+   "write": "owner"
+  },
+  {
+   "path": "status",
+   "read": "admin",
+   "write": "owner"
+  },
+  {
+   "path": "status/{self}",
+   "read": "interact",
+   "write": "interact"
+  },
+  {
+   "path": "krank",
+   "read": "owner",
+   "write": "owner"
+  },
+  {
+   "path": "krank/{self}",
+   "read": "interact",
+   "write": "interact"
+  }
+ ],
+ "zugangsRollen": [
+  "admin",
+  "owner"
+ ],
+ "importKarte": true
+}

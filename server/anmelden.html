@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Anmelden · WN Entrümpelung</title>
+<title>Anmelden</title>
 <link rel="stylesheet" href="/fonts/fonts.css">
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0B1220;color:#E5EDF7;font:15px Inter,system-ui,sans-serif;padding:20px}
@@ -11,10 +11,10 @@ button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;backg
 .f{color:#FCA5A5;font-size:13.5px;margin-top:12px;min-height:18px;text-align:center}.h{color:#9FB0C8;font-size:13px;text-align:center;margin-top:14px}
 </style></head><body>
 <form class="k" id="f">
-  <img src="/logo-mark.svg" alt="WN Entrümpelung">
-  <h1 id="ti">Team-Bereich</h1>
+  <img id="lo" alt="" hidden>
+  <h1 id="ti">Anmelden</h1>
   <div id="setup" hidden>
-    <p class="h" style="margin-top:0">Erster Start: Legen Sie jetzt den <b>Chef-Zugang</b> an.</p>
+    <p class="h" style="margin-top:0">Erster Start: Legen Sie jetzt den <b>Zugang für <span id="own">den Inhaber</span></b> an.</p>
     <label for="nm">Ihr Name</label><input id="nm" autocomplete="name">
     <div id="cw" hidden><label for="cd">Einrichtungs-Code (steht in der Datei .env)</label><input id="cd" autocomplete="off"></div>
   </div>
@@ -22,13 +22,13 @@ button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;backg
   <label for="pw">Passwort</label><input id="pw" type="password" autocomplete="current-password" required minlength="8">
   <button id="bt">Anmelden</button>
   <div class="f" id="er" role="alert"></div>
-  <div class="h">Zugang vergessen? Bitte beim Chef melden.</div>
+  <div class="h">Zugang vergessen? Bitte beim <span id="own2">Inhaber</span> melden.</div>
 </form>
 <script>
 let setup=false;
-fetch("/api/status").then(r=>r.json()).then(s=>{if(!s.eingerichtet){setup=true;document.getElementById("setup").hidden=false;document.getElementById("cw").hidden=!s.setupCode;document.getElementById("ti").textContent="Einrichtung";document.getElementById("bt").textContent="Chef-Zugang anlegen";document.getElementById("pw").autocomplete="new-password"}});
+let start="/";fetch("/api/status").then(r=>r.json()).then(s=>{start=s.start||"/";document.title="Anmelden · "+(s.name||"");if(s.logo){lo.src=s.logo;lo.hidden=false}ti.textContent=s.name||"Anmelden";own.textContent=own2.textContent=(s.rollen&&s.rollen.owner)||"Inhaber";if(!s.eingerichtet){setup=true;document.getElementById("setup").hidden=false;document.getElementById("cw").hidden=!s.setupCode;document.getElementById("ti").textContent="Einrichtung";document.getElementById("bt").textContent="Zugang anlegen";document.getElementById("pw").autocomplete="new-password"}});
 document.getElementById("f").onsubmit=async e=>{e.preventDefault();const er=document.getElementById("er");er.textContent="";
   const d={login:lg.value,pass:pw.value};if(setup){d.name=nm.value;d.code=cd.value}
   const r=await fetch(setup?"/api/setup":"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});
-  const j=await r.json().catch(()=>({}));if(r.ok)location.href="/team/";else er.textContent=j.fehler||"Fehler";};
+  const j=await r.json().catch(()=>({}));if(r.ok)location.href=j.start||start;else er.textContent=j.fehler||"Fehler";};
 </script></body></html>

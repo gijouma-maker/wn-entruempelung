@@ -1,7 +1,8 @@
-/* WN Entrümpelung – eigener Server
-   Läuft mit Node.js 22 (ohne Zusatzpakete). Liefert die Kunden-App (/) und die Team-App (/team/),
-   speichert alle Daten in einer Datenbank (data/wn.db), Fotos in data/dateien/,
-   und leitet KI-Anfragen mit Ihrem eigenen API-Schlüssel an Claude (Anthropic) weiter.
+/* Eigener App-Server (WN Entrümpelung, JoumHome …)
+   Läuft mit Node.js 22 (ohne Zusatzpakete). Liefert die App-Dateien aus dem Ordner über server/,
+   speichert alle Daten in einer Datenbank (data/app.db), Fotos in data/dateien/,
+   und beantwortet KI-Anfragen mit der eigenen KI (Ollama) oder auf Wunsch über Claude (Anthropic).
+   Was die App ausmacht (Name, Rollen, Rechte), steht in server/app.json.
    Start:  node --no-warnings server.js        Einstellungen: Datei .env (siehe .env.example) */
 "use strict";
 const http = require("node:http");
@@ -35,11 +36,15 @@ const CFG = {
   setupCode: process.env.WN_SETUP_CODE || "",
   https: process.env.WN_HTTPS !== "0",
 };
+const APP = JSON.parse(fs.readFileSync(path.join(HIER, "app.json"), "utf8"));
+APP.start = APP.start || "/";            // Adresse der App nach dem Anmelden
+APP.geschuetzt = APP.geschuetzt || [APP.start + "index.html"]; // Seiten nur mit Anmeldung
+APP.rollen = APP.rollen || { owner: "Chef", admin: "Mitarbeiter", interact: "Nutzer" };
 fs.mkdirSync(path.join(CFG.daten, "dateien"), { recursive: true });
 fs.mkdirSync(path.join(CFG.daten, "sicherung"), { recursive: true });
 
 /* ---------- Datenbank ---------- */
-const db = new DatabaseSync(path.join(CFG.daten, "wn.db"));
+const db = new DatabaseSync(path.join(CFG.daten, APP.datenbank || "app.db"));
 db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS docs(col TEXT, id TEXT, data TEXT, geaendert TEXT, von TEXT, PRIMARY KEY(col,id));
 CREATE TABLE IF NOT EXISTS nutzer(id TEXT PRIMARY KEY, login TEXT UNIQUE, name TEXT, rolle TEXT, hash TEXT, aktiv INTEGER DEFAULT 1, angelegt TEXT);
@@ -69,22 +74,26 @@ const Q = {
 const jetzt = () => new Date().toISOString();
 const neueId = (p = "") => p + Date.now().toString(36) + crypto.randomBytes(5).toString("hex");
 
-/* ---------- Rechte (wie in der Claude-Version) ----------
-   staff = Chef und Mitarbeiter, chef = nur Chef, self = Mitarbeiter nur das eigene Dokument (id = eigene Nutzer-ID) */
-const RECHTE = {
-  tickets: { r: "staff", w: "staff" }, belege: { r: "staff", w: "staff" }, einnahmen: { r: "staff", w: "staff" }, personen: { r: "staff", w: "staff" },
-  einstellungen: { r: "staff", w: "chef" }, team: { r: "staff", w: "chef" },
-  urlaub: { r: "staff", w: "chef", sw: true }, urlaubok: { r: "staff", w: "chef" }, status: { r: "staff", w: "chef", sw: true },
-  profil: { r: "chef", w: "chef", sr: true, sw: true }, vbest: { r: "chef", w: "chef", sr: true, sw: true }, zeiten: { r: "chef", w: "chef", sr: true, sw: true },
-  krank: { r: "chef", w: "chef", sr: true, sw: true }, vertraege: { r: "chef", w: "chef", sr: true },
-};
+/* ---------- Rechte: dieselben Regeln wie in der Claude-Version (app.json → rechte) ----------
+   Rollen: owner (Chef/Vermieter) ⊃ admin (Mitarbeiter/Verwaltung) ⊃ interact (Kunde/Mieter/Handwerker)
+   Regel-Pfade: "" = alles andere, "sammlung", "sammlung/{self}" = nur das eigene Dokument (id = eigene Nutzer-ID) */
+const ROLLEN = ["owner", "admin", "interact"];
+const ALT = { chef: "owner", mitarbeiter: "admin" };
+const normRolle = r => ALT[r] || (ROLLEN.includes(r) ? r : "interact");
+const STUFE = { owner: 3, admin: 2, interact: 1, view: 1 };
+const REGELN = {}; for (const r of APP.rechte || []) REGELN[r.path] = r;
+function regelFuer(col, id, u) {
+  if (id != null && u && id === u.id && REGELN[col + "/{self}"]) return REGELN[col + "/{self}"];
+  return REGELN[col] || REGELN[""] || { read: "owner", write: "owner" };
+}
 function darf(u, col, id, art) {
   if (!u) return false;
-  if (u.rolle === "chef") return true;
-  const r = RECHTE[col]; if (!r) return false;
-  if (r[art] === "staff") return true;
-  return id != null && id === u.id && !!r[art === "r" ? "sr" : "sw"];
+  if (u.rolle === "owner") return true;
+  const r = regelFuer(col, id, u); const noetig = STUFE[art === "r" ? r.read : r.write] || 3;
+  return (STUFE[u.rolle] || 1) >= noetig;
 }
+const istOwner = u => u.rolle === "owner";
+const istTeam = u => u.rolle === "owner" || u.rolle === "admin";
 
 /* ---------- Passwörter & Sitzungen ---------- */
 function hashPw(pw) { const salt = crypto.randomBytes(16); const h = crypto.scryptSync(String(pw), salt, 64); return salt.toString("hex") + ":" + h.toString("hex"); }
@@ -99,7 +108,7 @@ function nutzerAus(req) {
   const t = cookies(req).wn_sitzung; if (!t) return null;
   const s = Q.sGet.get(t); if (!s || s.bis < Date.now()) return null;
   const u = Q.nGet.get(s.uid); if (!u || !u.aktiv) return null;
-  return { id: u.id, name: u.name, rolle: u.rolle, login: u.login, token: t };
+  return { id: u.id, name: u.name, rolle: normRolle(u.rolle), login: u.login, token: t };
 }
 function setzeSitzung(res, uid) {
   const t = crypto.randomBytes(32).toString("hex");
@@ -135,7 +144,14 @@ function datei(res, f, extra = {}) {
     fs.createReadStream(f).pipe(res);
   });
 }
-function mergeTief(a, b) { return Object.assign({}, a || {}, b || {}); } // wie Firestore update(): oberste Ebene ersetzen
+function mergeTief(a, b) { // wie update(): oberste Ebene ersetzen, "a.b.c" setzt verschachtelt
+  const o = JSON.parse(JSON.stringify(a || {}));
+  for (const [k, v] of Object.entries(b || {})) {
+    if (k.includes(".")) { const ks = k.split("."); let x = o; for (const t of ks.slice(0, -1)) { if (!x[t] || typeof x[t] !== "object") x[t] = {}; x = x[t]; } x[ks.at(-1)] = v; }
+    else o[k] = v;
+  }
+  return o;
+}
 
 /* ---------- KI ----------
    lokal:     eigene KI auf dem eigenen Rechner/Server über Ollama (kostenlos, keine Daten nach außen)
@@ -150,7 +166,16 @@ async function naechste() {
   kiLaeuft = true; const w = warteschlange.shift();
   try { w.ok(await ollama(w.job)); } catch (e) { w.no(e); } finally { kiLaeuft = false; naechste(); }
 }
-async function ollama({ prompt, bilder, json: alsJson }) {
+/* Nachrichten vereinheitlichen: entweder ein Prompt oder ein Gesprächsverlauf [{role, content}] */
+function verlauf({ prompt, nachrichten, json: alsJson }) {
+  const txt = c => typeof c === "string" ? c : Array.isArray(c) ? c.map(x => typeof x === "string" ? x : x?.text || "").join("\n") : String(c ?? "");
+  let m = Array.isArray(nachrichten) && nachrichten.length ? nachrichten.slice(-40).map(x => ({ role: x.role === "assistant" ? "assistant" : "user", content: txt(x.content) })) : [{ role: "user", content: String(prompt || "") }];
+  if (m[0].role !== "user") m.unshift({ role: "user", content: "." });
+  const letzte = m.at(-1); if (letzte.role !== "user") m.push({ role: "user", content: "Bitte fortfahren." });
+  if (alsJson) m.at(-1).content += "\n\nAntworte ausschließlich mit gültigem JSON, ohne Erklärung und ohne Codeblock.";
+  return m;
+}
+async function ollama({ prompt, nachrichten, bilder, json: alsJson }) {
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 6 * 60e3);
   try {
     const r = await fetch(CFG.ollamaUrl.replace(/\/$/, "") + "/api/chat", {
@@ -158,7 +183,7 @@ async function ollama({ prompt, bilder, json: alsJson }) {
       body: JSON.stringify({
         model: CFG.ollamaModell, stream: false, keep_alive: "30m", options: { temperature: 0.1, num_ctx: 8192 },
         ...(alsJson ? { format: "json" } : {}),
-        messages: [{ role: "user", content: String(prompt || "") + (alsJson ? "\n\nAntworte ausschließlich mit gültigem JSON." : ""), images: (bilder || []).slice(0, 4).map(b => b.data).filter(Boolean) }],
+        messages: verlauf({ prompt, nachrichten, json: alsJson }).map((m, i, a) => i === a.length - 1 ? { ...m, images: (bilder || []).slice(0, 4).map(b => b.data).filter(Boolean) } : m),
       }),
     });
     const j = await r.json().catch(() => ({}));
@@ -170,20 +195,22 @@ async function ollama({ prompt, bilder, json: alsJson }) {
     throw e;
   } finally { clearTimeout(t); }
 }
-async function kiAnfrage(u, { prompt, bilder, json: alsJson }) {
+async function kiAnfrage(u, { prompt, nachrichten, bilder, json: alsJson }) {
   if (CFG.kiArt === "aus") throw Object.assign(new Error("KI ist ausgeschaltet."), { status: 503, code: "no_key" });
-  if (CFG.kiArt === "lokal") return kiLokal({ prompt, bilder, json: alsJson });
+  if (CFG.kiArt === "lokal") return kiLokal({ prompt, nachrichten, bilder, json: alsJson });
   if (!CFG.kiKey) throw Object.assign(new Error("KI ist auf dem Server noch nicht eingerichtet (ANTHROPIC_API_KEY fehlt in .env)."), { status: 503, code: "no_key" });
   const tag = jetzt().slice(0, 10);
   if ((Q.kiGet.get(u.id, tag)?.anzahl || 0) >= CFG.kiLimit) throw Object.assign(new Error("Tageslimit für KI erreicht."), { status: 429, code: "rate_limited" });
   Q.kiInc.run(u.id, tag);
   const inhalt = [];
   for (const b of (bilder || []).slice(0, 8)) if (b && b.data) inhalt.push({ type: "image", source: { type: "base64", media_type: /^image\/(jpeg|png|gif|webp)$/.test(b.media_type) ? b.media_type : "image/jpeg", data: b.data } });
-  inhalt.push({ type: "text", text: String(prompt || "") + (alsJson ? "\n\nAntworte ausschließlich mit gültigem JSON, ohne Erklärung und ohne Codeblock." : "") });
+  const msgs = verlauf({ prompt, nachrichten, json: alsJson });
+  inhalt.push({ type: "text", text: msgs.at(-1).content });
+  msgs[msgs.length - 1] = { role: "user", content: inhalt };
   const r = await fetch(CFG.kiUrl, {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": CFG.kiKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: CFG.kiModell, max_tokens: 4096, messages: [{ role: "user", content: inhalt }] }),
+    body: JSON.stringify({ model: CFG.kiModell, max_tokens: 4096, messages: msgs }),
   });
   if (r.status === 429 || r.status === 529) throw Object.assign(new Error("KI gerade ausgelastet – bitte gleich nochmal."), { status: 429, code: "rate_limited" });
   const j = await r.json().catch(() => ({}));
@@ -198,13 +225,13 @@ async function api(req, res, url) {
   const ip = req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.socket.remoteAddress;
 
   /* Anmelden / Ersteinrichtung (ohne Sitzung) */
-  if (p[0] === "status" && req.method === "GET") return json(res, 200, { eingerichtet: Q.nCount.get().n > 0, setupCode: !!CFG.setupCode, ki: kiAn() });
+  if (p[0] === "status" && req.method === "GET") return json(res, 200, { eingerichtet: Q.nCount.get().n > 0, setupCode: !!CFG.setupCode, ki: kiAn(), name: APP.name, logo: APP.logo || "", start: APP.start, rollen: APP.rollen });
   if (p[0] === "setup" && req.method === "POST") {
     if (Q.nCount.get().n > 0) return json(res, 409, { fehler: "Es gibt schon einen Chef-Zugang." });
     const d = await bodyJson(req, 1e5);
     if (CFG.setupCode && d.code !== CFG.setupCode) return json(res, 403, { fehler: "Einrichtungs-Code stimmt nicht." });
     if (!d.login || String(d.pass || "").length < 8) return json(res, 400, { fehler: "Benutzername und Passwort (mind. 8 Zeichen) eingeben." });
-    const id = neueId("u_"); Q.nNew.run(id, String(d.login).trim().toLowerCase(), String(d.name || "Chef").trim(), "chef", hashPw(d.pass), jetzt());
+    const id = neueId("u_"); Q.nNew.run(id, String(d.login).trim().toLowerCase(), String(d.name || APP.rollen.owner).trim(), "owner", hashPw(d.pass), jetzt());
     setzeSitzung(res, id); return json(res, 200, { ok: true });
   }
   if (p[0] === "login" && req.method === "POST") {
@@ -212,7 +239,7 @@ async function api(req, res, url) {
     const d = await bodyJson(req, 1e5);
     const u = Q.nLogin.get(String(d.login || "").trim().toLowerCase());
     if (!u || !u.aktiv || !pruefPw(d.pass, u.hash)) { v.n++; fehlVersuche.set(ip, v); return json(res, 401, { fehler: "Benutzername oder Passwort falsch." }); }
-    fehlVersuche.delete(ip); setzeSitzung(res, u.id); return json(res, 200, { ok: true, rolle: u.rolle });
+    fehlVersuche.delete(ip); setzeSitzung(res, u.id); return json(res, 200, { ok: true, rolle: normRolle(u.rolle), start: APP.start });
   }
 
   const u = nutzerAus(req);
@@ -220,7 +247,13 @@ async function api(req, res, url) {
   if (req.method !== "GET" && req.headers["x-wn"] !== "1") return json(res, 403, { fehler: "Ungültige Anfrage." }); // Schutz gegen fremde Seiten (CSRF)
 
   if (p[0] === "logout") { Q.sDel.run(u.token); res.setHeader("Set-Cookie", "wn_sitzung=; Path=/; Max-Age=0"); return json(res, 200, { ok: true }); }
-  if (p[0] === "ich") return json(res, 200, { id: u.id, name: u.name, rolle: u.rolle, login: u.login, ki: kiAn(), kiArt: CFG.kiArt });
+  if (p[0] === "ich") return json(res, 200, { id: u.id, name: u.name, rolle: u.rolle, rolleName: APP.rollen[u.rolle] || u.rolle, login: u.login, ki: kiAn(), kiArt: CFG.kiArt, app: APP.name, start: APP.start, rollen: APP.rollen, zugangsRollen: APP.zugangsRollen || ROLLEN, importKarte: !!APP.importKarte });
+  if (p[0] === "suche" && req.method === "POST") { // Personen suchen (zum Verbinden in der App)
+    if (!istTeam(u)) return json(res, 403, { fehler: "Keine Berechtigung." });
+    const q = String((await bodyJson(req, 1e5)).q || "").trim().toLowerCase();
+    const l = Q.nAll.all().filter(n => n.aktiv && (!q || (n.name || "").toLowerCase().includes(q) || n.login.includes(q))).slice(0, 30);
+    return json(res, 200, l.map(n => ({ id: n.id, name: n.name, isMe: n.id === u.id, rolle: normRolle(n.rolle) })));
+  }
   if (p[0] === "passwort" && req.method === "POST") {
     const d = await bodyJson(req, 1e5); const n = Q.nGet.get(u.id);
     if (!pruefPw(d.alt, n.hash)) return json(res, 403, { fehler: "Altes Passwort stimmt nicht." });
@@ -235,8 +268,8 @@ async function api(req, res, url) {
 
   /* Zugänge verwalten (nur Chef) */
   if (p[0] === "nutzer") {
-    if (u.rolle !== "chef") return json(res, 403, { fehler: "Nur für den Chef." });
-    if (req.method === "GET") return json(res, 200, Q.nAll.all());
+    if (!istOwner(u)) return json(res, 403, { fehler: "Nur für den Inhaber." });
+    if (req.method === "GET") return json(res, 200, Q.nAll.all().map(n => ({ ...n, rolle: normRolle(n.rolle) })));
     if (req.method === "POST") {
       const d = await bodyJson(req, 1e5); const login = String(d.login || "").trim().toLowerCase();
       if (!/^[a-z0-9._@-]{3,40}$/.test(login)) return json(res, 400, { fehler: "Benutzername: 3–40 Zeichen, nur Buchstaben, Zahlen, Punkt, Strich." });
@@ -244,14 +277,14 @@ async function api(req, res, url) {
       if (Q.nLogin.get(login)) return json(res, 409, { fehler: "Diesen Benutzernamen gibt es schon." });
       let id = neueId("u_");
       if (d.uebernehmen) { if (!ID_OK.test(d.uebernehmen) || Q.nGet.get(d.uebernehmen)) return json(res, 400, { fehler: "Diese Person hat schon einen Zugang." }); id = d.uebernehmen; }
-      Q.nNew.run(id, login, String(d.name || login).trim(), d.rolle === "chef" ? "chef" : "mitarbeiter", hashPw(d.pass), jetzt());
+      Q.nNew.run(id, login, String(d.name || login).trim(), ROLLEN.includes(d.rolle) ? d.rolle : "admin", hashPw(d.pass), jetzt());
       return json(res, 200, { ok: true, id });
     }
     if (req.method === "PATCH" && p[1]) {
       const d = await bodyJson(req, 1e5); const n = Q.nGet.get(p[1]); if (!n) return json(res, 404, { fehler: "Unbekannt." });
-      if (p[1] === u.id && (d.aktiv === false || (d.rolle && d.rolle !== "chef"))) return json(res, 400, { fehler: "Den eigenen Chef-Zugang kann man nicht sperren." });
+      if (p[1] === u.id && (d.aktiv === false || (d.rolle && d.rolle !== "owner"))) return json(res, 400, { fehler: "Den eigenen Inhaber-Zugang kann man nicht sperren." });
       if (d.name) db.prepare("UPDATE nutzer SET name=? WHERE id=?").run(String(d.name).trim(), p[1]);
-      if (d.rolle) db.prepare("UPDATE nutzer SET rolle=? WHERE id=?").run(d.rolle === "chef" ? "chef" : "mitarbeiter", p[1]);
+      if (d.rolle && ROLLEN.includes(d.rolle)) db.prepare("UPDATE nutzer SET rolle=? WHERE id=?").run(d.rolle, p[1]);
       if (d.pass) { if (String(d.pass).length < 8) return json(res, 400, { fehler: "Passwort: mindestens 8 Zeichen." }); db.prepare("UPDATE nutzer SET hash=? WHERE id=?").run(hashPw(d.pass), p[1]); Q.sDelUid.run(p[1]); }
       if (typeof d.aktiv === "boolean") { db.prepare("UPDATE nutzer SET aktiv=? WHERE id=?").run(d.aktiv ? 1 : 0, p[1]); if (!d.aktiv) Q.sDelUid.run(p[1]); }
       return json(res, 200, { ok: true });
@@ -260,14 +293,19 @@ async function api(req, res, url) {
 
   /* Personen aus übernommenen Daten, die noch keinen Zugang haben */
   if (p[0] === "ohnezugang" && req.method === "GET") {
-    if (u.rolle !== "chef") return json(res, 403, { fehler: "Nur für den Chef." });
-    const l = []; for (const z of Q.docAll.all("personen")) if (!Q.nGet.get(z.id)) { const d = JSON.parse(z.data); l.push({ id: z.id, name: d.name || d.anzeige || z.id }); }
+    if (!istOwner(u)) return json(res, 403, { fehler: "Nur für den Inhaber." });
+    const l = [], schon = new Set();
+    for (const qq of APP.personen || []) for (const z of Q.docAll.all(qq.col)) {
+      const d = JSON.parse(z.data); const id = qq.id === "$id" ? z.id : d[qq.id];
+      if (!id || typeof id !== "string" || schon.has(id) || Q.nGet.get(id)) continue;
+      schon.add(id); l.push({ id, name: d[qq.name || "name"] || d.userName || id, rolle: qq.rolle || "admin", art: qq.art || "" });
+    }
     return json(res, 200, l);
   }
 
   /* Datenübernahme aus der Claude-Version (Export-Datei) */
   if (p[0] === "import" && req.method === "POST") {
-    if (u.rolle !== "chef") return json(res, 403, { fehler: "Nur für den Chef." });
+    if (!istOwner(u)) return json(res, 403, { fehler: "Nur für den Inhaber." });
     const d = await bodyJson(req, 600e6);
     if (d.format !== "wn-export" || !d.daten) return json(res, 400, { fehler: "Das ist keine WN-Export-Datei." });
     let docs = 0, dateien = 0;
@@ -276,7 +314,7 @@ async function api(req, res, url) {
       if (d.chefId && d.chefId !== u.id && ID_OK.test(d.chefId) && !Q.nGet.get(d.chefId)) { // eigener Chef-Zugang übernimmt die alte Chef-ID
         db.prepare("UPDATE nutzer SET id=? WHERE id=?").run(d.chefId, u.id);
         db.prepare("UPDATE sitzungen SET uid=? WHERE uid=?").run(d.chefId, u.id);
-        for (const c of ["personen", "profil", "status", "zeiten", "vbest"]) Q.docDel.run(c, u.id);
+        for (const c of APP.eigeneDokumente || []) Q.docDel.run(c, u.id);
       }
       for (const [col, o] of Object.entries(d.daten)) {
         if (!COL_OK.test(col) || !o || typeof o !== "object") continue;
@@ -327,10 +365,17 @@ async function api(req, res, url) {
   /* Dateien (Fotos, Belege, Verträge) */
   if (p[0] === "datei") {
     if (req.method === "POST") {
-      const b = await body(req, 30e6); const id = neueId("f_");
+      const b = await body(req, 60e6); let id = neueId("f_");
+      const wunsch = url.searchParams.get("id"); // beim Umzug die alte Datei-ID behalten
+      if (wunsch && istOwner(u) && DATEI_OK.test(wunsch)) { if (Q.fGet.get(wunsch)) return json(res, 200, { id: wunsch, schon: true }); id = wunsch; }
       const typ = String(req.headers["content-type"] || "application/octet-stream").slice(0, 100);
       fs.writeFileSync(path.join(CFG.daten, "dateien", id), b); Q.fNew.run(id, typ, b.length, u.id, jetzt());
-      return json(res, 200, { id });
+      return json(res, 200, { id, url: "/api/datei/" + id });
+    }
+    if (req.method === "DELETE" && p[1]) {
+      const f = DATEI_OK.test(p[1]) && Q.fGet.get(p[1]); if (!f) return json(res, 200, { ok: true });
+      if (!istTeam(u) && f.von !== u.id) return json(res, 403, { fehler: "Keine Berechtigung." });
+      try { fs.unlinkSync(path.join(CFG.daten, "dateien", f.id)); } catch (e) {} db.prepare("DELETE FROM dateien WHERE id=?").run(f.id); return json(res, 200, { ok: true });
     }
     if (req.method === "GET" && p[1]) {
       const f = DATEI_OK.test(p[1]) && Q.fGet.get(p[1]); if (!f) return json(res, 404, { fehler: "Nicht gefunden" });
@@ -356,15 +401,22 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x");
     if (url.pathname.startsWith("/api/")) return await api(req, res, url);
-    if (url.pathname === "/team/wn-server.js") return datei(res, path.join(HIER, "client.js"), { "Cache-Control": "no-cache" });
+    if (/\/(wn-server|server-modus)\.js$/.test(url.pathname)) return datei(res, path.join(HIER, "client.js"), { "Cache-Control": "no-cache" });
     if (url.pathname === "/anmelden" || url.pathname === "/zugaenge") return datei(res, path.join(HIER, url.pathname.slice(1) + ".html"), { "Cache-Control": "no-cache" });
     let rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
     if (rel === "" || rel.endsWith("/")) rel += "index.html";
-    if (rel === "team") { res.writeHead(302, { Location: "/team/" }); return res.end(); }
+    if (APP.start !== "/" && "/" + rel + "/" === APP.start) { res.writeHead(302, { Location: APP.start }); return res.end(); }
     if (OEFFENTLICH_VERBOTEN.test(rel)) { res.writeHead(404); return res.end(); }
-    if (rel === "team/index.html" && !nutzerAus(req)) { res.writeHead(302, { Location: "/anmelden" }); return res.end(); }
+    if (APP.geschuetzt.includes("/" + rel) && !nutzerAus(req)) { res.writeHead(302, { Location: "/anmelden" }); return res.end(); }
     const f = path.resolve(WEB, rel);
     if (!f.startsWith(WEB + path.sep)) { res.writeHead(404); return res.end(); }
+    if (APP.geschuetzt.includes("/" + rel) && rel.endsWith(".html")) { // Server-Modus vor allen anderen Skripten einbinden (App-Datei bleibt unverändert)
+      return fs.readFile(f, "utf8", (e, html) => {
+        if (e) { res.writeHead(404); return res.end(); }
+        if (!/(wn-server|server-modus)\.js/.test(html)) html = html.replace(/<head[^>]*>/i, m => m + '\n<script src="/server-modus.js"></script>');
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }); res.end(html);
+      });
+    }
     datei(res, f, { "Cache-Control": rel.endsWith(".html") ? "no-cache" : "public, max-age=3600" });
   } catch (e) {
     if (!res.headersSent) json(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { fehler: e.code === 413 ? "Datei zu groß" : e.code === 400 ? e.message : "Serverfehler" });
@@ -375,9 +427,9 @@ const server = http.createServer(async (req, res) => {
 /* ---------- Tägliche Sicherung (14 Tage) ---------- */
 function sichern() {
   try {
-    const ziel = path.join(CFG.daten, "sicherung", "wn-" + jetzt().slice(0, 10) + ".db");
+    const ziel = path.join(CFG.daten, "sicherung", "app-" + jetzt().slice(0, 10) + ".db");
     if (!fs.existsSync(ziel)) db.exec(`VACUUM INTO '${ziel.replace(/'/g, "''")}'`);
-    const alle = fs.readdirSync(path.join(CFG.daten, "sicherung")).filter(f => /^wn-.*\.db$/.test(f)).sort();
+    const alle = fs.readdirSync(path.join(CFG.daten, "sicherung")).filter(f => /^app-.*\.db$/.test(f)).sort();
     for (const f of alle.slice(0, Math.max(0, alle.length - 14))) fs.unlinkSync(path.join(CFG.daten, "sicherung", f));
     Q.sClean.run(Date.now());
   } catch (e) { console.error("Sicherung:", e.message); }
@@ -385,6 +437,6 @@ function sichern() {
 setInterval(sichern, 6 * 3600e3); setTimeout(sichern, 5e3);
 
 server.listen(CFG.port, CFG.host, () => {
-  console.log(`WN-Server läuft auf http://${CFG.host}:${CFG.port}  ·  KI: ${CFG.kiArt === "lokal" ? "eigene KI (" + CFG.ollamaModell + " über " + CFG.ollamaUrl + ")" : kiAn() ? "Anthropic (" + CFG.kiModell + ")" : "AUS"}`);
-  if (!Q.nCount.get().n) console.log("Noch kein Zugang – bitte /anmelden öffnen und den Chef-Zugang anlegen" + (CFG.setupCode ? " (Einrichtungs-Code aus .env)." : "."));
+  console.log(`${APP.name}-Server läuft auf http://${CFG.host}:${CFG.port}  ·  KI: ${CFG.kiArt === "lokal" ? "eigene KI (" + CFG.ollamaModell + " über " + CFG.ollamaUrl + ")" : kiAn() ? "Anthropic (" + CFG.kiModell + ")" : "AUS"}`);
+  if (!Q.nCount.get().n) console.log("Noch kein Zugang – bitte /anmelden öffnen und den Zugang für " + APP.rollen.owner + " anlegen" + (CFG.setupCode ? " (Einrichtungs-Code aus .env)." : "."));
 });

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zugänge · WN Entrümpelung</title>
+<title>Zugänge</title>
 <link rel="stylesheet" href="/fonts/fonts.css">
 <style>
 *{box-sizing:border-box}body{margin:0;background:#0B1220;color:#E5EDF7;font:15px Inter,system-ui,sans-serif;padding:16px}
@@ -11,20 +11,20 @@ button{padding:11px 14px;border:0;border-radius:10px;background:#2563EB;color:#f
 .z{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #1E293B}.z:first-child{border-top:0}
 .s{color:#9FB0C8;font-size:12.5px}.m{font-size:13.5px;margin-top:8px;min-height:18px}.ok{color:#86EFAC}.f{color:#FCA5A5}.aus{opacity:.5}
 </style></head><body><main>
-<a href="/team/">← zurück zur App</a>
+<a href="/" id="zur">← zurück zur App</a>
 <h1>Zugänge</h1>
 <div id="chef" hidden>
   <div class="k"><h2>Neuer Zugang</h2>
     <label>Name</label><input id="nn" placeholder="z. B. Ali Yılmaz">
     <label>Benutzername</label><input id="nl" autocapitalize="none" placeholder="z. B. ali">
     <label>Start-Passwort (mind. 8 Zeichen)</label><input id="np">
-    <div id="uw" hidden><label>Daten übernehmen von (aus der Claude-Version)</label><select id="nu"><option value="">– neue Person –</option></select></div>
-    <label>Rolle</label><select id="nr"><option value="mitarbeiter">Mitarbeiter</option><option value="chef">Chef</option></select>
+    <div id="uw" hidden><label>Ist diese Person aus der Claude-Version (Daten übernehmen)</label><select id="nu"><option value="">– neue Person –</option></select></div>
+    <label>Rolle</label><select id="nr"></select>
     <button id="nb">Zugang anlegen</button><div class="m" id="nm"></div>
-    <div class="s">Danach dem Mitarbeiter Adresse, Benutzername und Passwort geben. Er meldet sich an und erscheint im Team; dort „Ins Team aufnehmen“ tippen.</div>
+    <div class="s">Danach dem Mitarbeiter Adresse, Benutzername und Passwort geben. Er meldet sich an und ist danach in der App sichtbar (z. B. im Team aufnehmen oder beim Mieter/Handwerker „Verbinden“).</div>
   </div>
   <div class="k"><h2>Alle Zugänge</h2><div id="li">…</div></div>
-  <div class="k"><h2>Daten übernehmen</h2>
+  <div class="k" id="wnImp"><h2>Daten übernehmen</h2>
     <div class="s">Aus der Claude-Version: Firmendaten → „Alle Daten exportieren“. Die heruntergeladene Datei hier auswählen. Vorhandene Einträge mit gleicher Nummer werden überschrieben.</div>
     <label>Export-Datei (WN-Export-….json)</label><input type="file" id="if" accept=".json,application/json">
     <button id="ib">Daten übernehmen</button><div class="m" id="im"></div>
@@ -42,10 +42,11 @@ async function api(p,o={}){const r=await fetch("/api/"+p,{...o,headers:H});if(r.
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const msg=(id,t,ok)=>{const e=document.getElementById(id);e.className="m "+(ok?"ok":"f");e.textContent=t};
 let ich;
-async function frei(){const l=await api("ohnezugang");const s=document.getElementById("nu");s.innerHTML='<option value="">– neue Person –</option>'+l.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");document.getElementById("uw").hidden=!l.length}
-async function liste(){frei();const l=await api("nutzer");document.getElementById("li").innerHTML=l.map(u=>`<div class="z ${u.aktiv?"":"aus"}"><div><b>${esc(u.name)}</b> <span class="s">${esc(u.login)} · ${u.rolle==="chef"?"Chef":"Mitarbeiter"}${u.aktiv?"":" · gesperrt"}</span></div>
+async function frei(){const l=await api("ohnezugang");const s=document.getElementById("nu");s.innerHTML='<option value="">– neue Person –</option>'+l.map(p=>`<option value="${esc(p.id)}" data-r="${esc(p.rolle)}">${esc(p.name)}${p.art?" · "+esc(p.art):""}</option>`).join("");document.getElementById("uw").hidden=!l.length}
+async function liste(){frei();const l=await api("nutzer");document.getElementById("li").innerHTML=l.map(u=>`<div class="z ${u.aktiv?"":"aus"}"><div><b>${esc(u.name)}</b> <span class="s">${esc(u.login)} · ${esc((ich.rollen||{})[u.rolle]||u.rolle)}${u.aktiv?"":" · gesperrt"}</span></div>
  ${u.id===ich.id?'<span class="s">Sie</span>':`<div><button class="g" data-pw="${u.id}">Passwort</button> <button class="g" data-ak="${u.id}" data-v="${u.aktiv?0:1}">${u.aktiv?"Sperren":"Freigeben"}</button></div>`}</div>`).join("")}
-(async()=>{ich=await api("ich");if(ich.rolle==="chef"){document.getElementById("chef").hidden=false;liste()}})();
+nu.onchange=()=>{const o=nu.selectedOptions[0];if(o&&o.dataset.r)nr.value=o.dataset.r;if(o&&o.value&&!nn.value)nn.value=o.textContent.split(" · ")[0]};
+(async()=>{ich=await api("ich");document.title="Zugänge · "+ich.app;zur.href=ich.start||"/";nr.innerHTML=(ich.zugangsRollen||[]).map(r=>`<option value="${r}">${esc((ich.rollen||{})[r]||r)}</option>`).join("");if(!ich.importKarte)wnImp.hidden=true;if(ich.rolle==="owner"){document.getElementById("chef").hidden=false;liste()}})();
 document.addEventListener("click",async e=>{const b=e.target.closest("button");if(!b)return;
   try{
     if(b.id==="nb"){await api("nutzer",{method:"POST",body:JSON.stringify({name:nn.value,login:nl.value,pass:np.value,rolle:nr.value,uebernehmen:nu.value||undefined})});msg("nm","Zugang angelegt: "+nl.value.trim().toLowerCase(),1);nn.value=nl.value=np.value="";liste()}
