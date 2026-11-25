@@ -291,6 +291,18 @@ async function api(req, res, url) {
     }
   }
 
+  /* Sicherungen (nur Inhaber) */
+  if (p[0] === "sicherung") {
+    if (!istOwner(u)) return json(res, 403, { fehler: "Nur für den Inhaber." });
+    if (req.method === "POST") { const z = sichern("hand"); return z ? json(res, 200, { ok: true, datei: path.basename(z) }) : json(res, 500, { fehler: "Sicherung fehlgeschlagen" }); }
+    const liste = fs.readdirSync(SICH).filter(f => /^app-.*\.db$/.test(f)).sort().reverse();
+    if (p[1] === "herunterladen") {
+      const f = liste[0]; if (!f) return json(res, 404, { fehler: "Noch keine Sicherung" });
+      return datei(res, path.join(SICH, f), { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${(APP.name || "app").replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[^A-Za-z0-9]+/g, "-")}-${f}"` });
+    }
+    return json(res, 200, { anzahl: liste.length, neueste: liste.slice(0, 5), zeiten: SICH_ZEITEN, tage: SICH_TAGE, kopie: !!SICH_KOPIE });
+  }
+
   /* Personen aus übernommenen Daten, die noch keinen Zugang haben */
   if (p[0] === "ohnezugang" && req.method === "GET") {
     if (!istOwner(u)) return json(res, 403, { fehler: "Nur für den Inhaber." });
@@ -308,6 +320,7 @@ async function api(req, res, url) {
     if (!istOwner(u)) return json(res, 403, { fehler: "Nur für den Inhaber." });
     const d = await bodyJson(req, 600e6);
     if (d.format !== "wn-export" || !d.daten) return json(res, 400, { fehler: "Das ist keine WN-Export-Datei." });
+    sichern("vor-import");
     let docs = 0, dateien = 0;
     db.exec("BEGIN");
     try {
@@ -375,7 +388,7 @@ async function api(req, res, url) {
     if (req.method === "DELETE" && p[1]) {
       const f = DATEI_OK.test(p[1]) && Q.fGet.get(p[1]); if (!f) return json(res, 200, { ok: true });
       if (!istTeam(u) && f.von !== u.id) return json(res, 403, { fehler: "Keine Berechtigung." });
-      try { fs.unlinkSync(path.join(CFG.daten, "dateien", f.id)); } catch (e) {} db.prepare("DELETE FROM dateien WHERE id=?").run(f.id); return json(res, 200, { ok: true });
+      try { fs.renameSync(path.join(CFG.daten, "dateien", f.id), path.join(PAPIERKORB, f.id)); } catch (e) {} db.prepare("DELETE FROM dateien WHERE id=?").run(f.id); return json(res, 200, { ok: true });
     }
     if (req.method === "GET" && p[1]) {
       const f = DATEI_OK.test(p[1]) && Q.fGet.get(p[1]); if (!f) return json(res, 404, { fehler: "Nicht gefunden" });
@@ -424,17 +437,43 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-/* ---------- Tägliche Sicherung (14 Tage) ---------- */
-function sichern() {
+/* ---------- Sicherung: mehrmals täglich (Standard 6, 14 und 22 Uhr), 30 Tage aufbewahrt ----------
+   Datenbank → data/sicherung/app-JJJJ-MM-TT-HHMM.db  ·  gelöschte Fotos → data/sicherung/geloescht/ (30 Tage)
+   Zusätzlich auf Wunsch eine Kopie außerhalb (WN_SICHERUNG_KOPIE=/mnt/backup), z. B. Storage-Box des Hosters */
+const SICH = path.join(CFG.daten, "sicherung"), PAPIERKORB = path.join(SICH, "geloescht");
+fs.mkdirSync(PAPIERKORB, { recursive: true });
+const SICH_ZEITEN = String(process.env.WN_SICHERUNG_ZEITEN || "6,14,22").split(",").map(x => +x).filter(x => x >= 0 && x < 24);
+const SICH_TAGE = +process.env.WN_SICHERUNG_TAGE || 30;
+const SICH_KOPIE = process.env.WN_SICHERUNG_KOPIE || "";
+const ortszeit = () => { const d = new Date(new Date().toLocaleString("en-US", { timeZone: process.env.TZ || "Europe/Berlin" })); const z = n => String(n).padStart(2, "0"); return { tag: `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`, std: d.getHours(), hhmm: z(d.getHours()) + z(d.getMinutes()) }; };
+let letzteSicherung = null;
+function sichern(grund = "") {
   try {
-    const ziel = path.join(CFG.daten, "sicherung", "app-" + jetzt().slice(0, 10) + ".db");
+    const t = ortszeit();
+    const ziel = path.join(SICH, `app-${t.tag}-${t.hhmm}${grund ? "-" + grund : ""}.db`);
     if (!fs.existsSync(ziel)) db.exec(`VACUUM INTO '${ziel.replace(/'/g, "''")}'`);
-    const alle = fs.readdirSync(path.join(CFG.daten, "sicherung")).filter(f => /^app-.*\.db$/.test(f)).sort();
-    for (const f of alle.slice(0, Math.max(0, alle.length - 14))) fs.unlinkSync(path.join(CFG.daten, "sicherung", f));
-    Q.sClean.run(Date.now());
-  } catch (e) { console.error("Sicherung:", e.message); }
+    letzteSicherung = { datei: path.basename(ziel), zeit: jetzt() };
+    aufraeumen(); kopieAussen(); Q.sClean.run(Date.now());
+    return ziel;
+  } catch (e) { console.error("Sicherung:", e.message); return null; }
 }
-setInterval(sichern, 6 * 3600e3); setTimeout(sichern, 5e3);
+function aufraeumen() {
+  const grenze = Date.now() - SICH_TAGE * 864e5;
+  for (const f of fs.readdirSync(SICH)) if (/^app-.*\.db$/.test(f) && fs.statSync(path.join(SICH, f)).mtimeMs < grenze) fs.unlinkSync(path.join(SICH, f));
+  for (const f of fs.readdirSync(PAPIERKORB)) if (fs.statSync(path.join(PAPIERKORB, f)).mtimeMs < grenze) fs.unlinkSync(path.join(PAPIERKORB, f));
+}
+function kopieAussen() { // Datenbank-Sicherungen und alle Fotos zusätzlich an einen zweiten Ort spiegeln
+  if (!SICH_KOPIE) return;
+  try {
+    for (const [von, nach] of [[SICH, path.join(SICH_KOPIE, "sicherung")], [path.join(CFG.daten, "dateien"), path.join(SICH_KOPIE, "dateien")]]) {
+      fs.mkdirSync(nach, { recursive: true });
+      for (const f of fs.readdirSync(von)) { const a = path.join(von, f), b = path.join(nach, f); if (fs.statSync(a).isFile() && !fs.existsSync(b)) fs.copyFileSync(a, b); }
+    }
+  } catch (e) { console.error("Kopie nach " + SICH_KOPIE + ":", e.message); }
+}
+let letzterSlot = "";
+setInterval(() => { const t = ortszeit(); const slot = t.tag + "-" + t.std; if (SICH_ZEITEN.includes(t.std) && slot !== letzterSlot) { letzterSlot = slot; sichern(); } }, 60e3);
+setTimeout(() => sichern("start"), 5e3);
 
 server.listen(CFG.port, CFG.host, () => {
   console.log(`${APP.name}-Server läuft auf http://${CFG.host}:${CFG.port}  ·  KI: ${CFG.kiArt === "lokal" ? "eigene KI (" + CFG.ollamaModell + " über " + CFG.ollamaUrl + ")" : kiAn() ? "Anthropic (" + CFG.kiModell + ")" : "AUS"}`);

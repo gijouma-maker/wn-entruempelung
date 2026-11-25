@@ -24,6 +24,9 @@ button{padding:11px 14px;border:0;border-radius:10px;background:#2563EB;color:#f
     <div class="s">Danach dem Mitarbeiter Adresse, Benutzername und Passwort geben. Er meldet sich an und ist danach in der App sichtbar (z. B. im Team aufnehmen oder beim Mieter/Handwerker „Verbinden“).</div>
   </div>
   <div class="k"><h2>Alle Zugänge</h2><div id="li">…</div></div>
+  <div class="k"><h2>Datensicherung</h2><div class="s" id="si">…</div>
+    <button id="sj">Jetzt sichern</button> <button class="g" id="sd">Neueste herunterladen</button><div class="m" id="sm"></div>
+    <div class="s">Tipp: Die heruntergeladene Datei ab und zu zusätzlich auf dem PC oder einem USB-Stick ablegen.</div></div>
   <div class="k" id="wnImp"><h2>Daten übernehmen</h2>
     <div class="s">Aus der Claude-Version: Firmendaten → „Alle Daten exportieren“. Die heruntergeladene Datei hier auswählen. Vorhandene Einträge mit gleicher Nummer werden überschrieben.</div>
     <label>Export-Datei (WN-Export-….json)</label><input type="file" id="if" accept=".json,application/json">
@@ -43,7 +46,8 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const msg=(id,t,ok)=>{const e=document.getElementById(id);e.className="m "+(ok?"ok":"f");e.textContent=t};
 let ich;
 async function frei(){const l=await api("ohnezugang");const s=document.getElementById("nu");s.innerHTML='<option value="">– neue Person –</option>'+l.map(p=>`<option value="${esc(p.id)}" data-r="${esc(p.rolle)}">${esc(p.name)}${p.art?" · "+esc(p.art):""}</option>`).join("");document.getElementById("uw").hidden=!l.length}
-async function liste(){frei();const l=await api("nutzer");document.getElementById("li").innerHTML=l.map(u=>`<div class="z ${u.aktiv?"":"aus"}"><div><b>${esc(u.name)}</b> <span class="s">${esc(u.login)} · ${esc((ich.rollen||{})[u.rolle]||u.rolle)}${u.aktiv?"":" · gesperrt"}</span></div>
+async function sich(){const s=await api("sicherung");document.getElementById("si").innerHTML=`Automatisch ${s.zeiten.length}× täglich (${s.zeiten.map(z=>z+" Uhr").join(", ")}), ${s.tage} Tage aufbewahrt · ${s.anzahl} Sicherungen vorhanden${s.kopie?" · zusätzliche Kopie außerhalb: an":" · zusätzliche Kopie außerhalb: <b>aus</b>"}<br>Neueste: ${esc(s.neueste[0]||"–")}`}
+async function liste(){frei();sich();const l=await api("nutzer");document.getElementById("li").innerHTML=l.map(u=>`<div class="z ${u.aktiv?"":"aus"}"><div><b>${esc(u.name)}</b> <span class="s">${esc(u.login)} · ${esc((ich.rollen||{})[u.rolle]||u.rolle)}${u.aktiv?"":" · gesperrt"}</span></div>
  ${u.id===ich.id?'<span class="s">Sie</span>':`<div><button class="g" data-pw="${u.id}">Passwort</button> <button class="g" data-ak="${u.id}" data-v="${u.aktiv?0:1}">${u.aktiv?"Sperren":"Freigeben"}</button></div>`}</div>`).join("")}
 nu.onchange=()=>{const o=nu.selectedOptions[0];if(o&&o.dataset.r)nr.value=o.dataset.r;if(o&&o.value&&!nn.value)nn.value=o.textContent.split(" · ")[0]};
 (async()=>{ich=await api("ich");document.title="Zugänge · "+ich.app;zur.href=ich.start||"/";nr.innerHTML=(ich.zugangsRollen||[]).map(r=>`<option value="${r}">${esc((ich.rollen||{})[r]||r)}</option>`).join("");if(!ich.importKarte)wnImp.hidden=true;if(ich.rolle==="owner"){document.getElementById("chef").hidden=false;liste()}})();
@@ -55,6 +59,8 @@ document.addEventListener("click",async e=>{const b=e.target.closest("button");i
     if(b.id==="ib"){const f=document.getElementById("if").files[0];if(!f)throw new Error("Bitte zuerst die Export-Datei auswählen.");if(!confirm("Daten jetzt übernehmen?"))return;msg("im","Wird übernommen … (kann bei vielen Fotos etwas dauern)",1);
       const r=await fetch("/api/import",{method:"POST",headers:{"Content-Type":"application/json","x-wn":"1"},body:f});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.fehler||"Fehler");
       msg("im",`Übernommen: ${j.docs} Einträge, ${j.dateien} Dateien. Jetzt für jeden Mitarbeiter oben einen Zugang anlegen und „Daten übernehmen von“ wählen.`,1);liste()}
+    if(b.id==="sj"){const j=await api("sicherung",{method:"POST"});msg("sm","Gesichert: "+j.datei,1);sich()}
+    if(b.id==="sd"){location.href="/api/sicherung/herunterladen"}
     if(b.id==="pb"){await api("passwort",{method:"POST",body:JSON.stringify({alt:pa.value,neu:pn.value})});msg("pm","Passwort geändert",1);pa.value=pn.value=""}
-  }catch(x){if(x)(b.id==="pb"?msg("pm",x.message):b.id==="nb"?msg("nm",x.message):b.id==="ib"?msg("im",x.message):alert(x.message))}});
+  }catch(x){if(x)(b.id==="pb"?msg("pm",x.message):b.id==="nb"?msg("nm",x.message):b.id==="ib"?msg("im",x.message):b.id==="sj"?msg("sm",x.message):alert(x.message))}});
 </script></body></html>

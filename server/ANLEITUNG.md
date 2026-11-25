@@ -48,7 +48,12 @@ Danach nur noch mit dem eigenen Server arbeiten.
 - **Mitarbeiter gekündigt?** Unter „Zugänge verwalten“ auf **Sperren** tippen. Der Zugang ist dann sofort abgemeldet.
 - **Neue Version einspielen:** Auf dem Server `wn-update` eingeben.
 - **Zugänge verwalten** (Leiste ganz oben, nur Chef): Mitarbeiter anlegen, Passwort zurücksetzen, sperren.
-- **Sicherung:** Die Datenbank wird täglich nach `/opt/wn/server/data/sicherung/` gesichert und 14 Tage aufbewahrt. Fotos liegen in `/opt/wn/server/data/dateien/`. Zusätzlich die Backup-Funktion des Hosters einschalten.
+- **Datensicherung (mehrfach):**
+  - Die Datenbank wird **3× täglich automatisch gesichert** (6, 14 und 22 Uhr), außerdem bei jedem Neustart und vor jeder Datenübernahme. Die Sicherungen werden **30 Tage** aufbewahrt, in `/opt/wn/server/data/sicherung/`.
+  - Gelöschte Fotos und PDFs landen erst im Papierkorb `sicherung/geloescht/` und werden nach 30 Tagen endgültig gelöscht.
+  - Unter **„Zugänge verwalten → Datensicherung“** kann man jederzeit von Hand sichern und die neueste Sicherung herunterladen. Diese Datei ab und zu auf dem PC oder einem USB-Stick ablegen.
+  - **Wichtig, eine zweite Kopie außerhalb des Servers:** Beim Hoster zusätzlich Speicherplatz buchen (z. B. eine Storage-Box), einbinden und in `.env` `WN_SICHERUNG_KOPIE=/mnt/backup` eintragen. Dann werden alle Sicherungen und Fotos automatisch dorthin kopiert. Zusätzlich die Snapshot- bzw. Backup-Funktion des Hosters einschalten. So sind die Daten auch sicher, wenn der Server ausfällt.
+  - Uhrzeiten und Aufbewahrung lassen sich in `.env` ändern (`WN_SICHERUNG_ZEITEN=6,14,22`, `WN_SICHERUNG_TAGE=30`).
 
 ## Gut zu wissen
 - **Spracheingabe:** Das Mikrofon nutzt die Spracherkennung des Browsers. Das klappt in Chrome und Edge sowie in Safari auf dem iPhone. In Firefox einfach tippen.
