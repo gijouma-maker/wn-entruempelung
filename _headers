@@ -1,0 +1,11 @@
+# Sicherheits-Header für Cloudflare Pages / Netlify (werden bei jedem Aufruf mitgeschickt)
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+
+/server/*
+  X-Robots-Tag: noindex, nofollow

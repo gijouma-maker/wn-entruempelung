@@ -93,3 +93,16 @@ Ist eine Nummer eingetragen, wird jede neue Anfrage automatisch als WhatsApp-Nac
 - **Vorlesen** funktioniert in allen modernen Browsern. Welche Stimmen es gibt, hängt vom Gerät ab (z. B. Arabisch oder Niederländisch muss auf dem Handy als Sprache vorhanden sein).
 - **Spracheingabe (Mikrofon)** funktioniert in Chrome, Edge und Safari. In Firefox kann man stattdessen schreiben.
 - Arabisch wird automatisch von rechts nach links angezeigt.
+
+
+## Kostenlos und sicher online (Cloudflare Pages)
+
+1. Kostenloses Konto auf dash.cloudflare.com anlegen, **Zwei-Faktor-Anmeldung** einschalten.
+2. Workers & Pages → Create → Pages → „Connect to Git“ → GitHub verbinden → `wn-entruempelung` wählen.
+3. Build-Befehl leer lassen, Ausgabeverzeichnis `/` → Deploy. Die Seite läuft dann unter `<name>.pages.dev` mit HTTPS.
+4. Eigene Domain unter „Custom domains“ eintragen (Domain am besten direkt bei Cloudflare kaufen, Auto-Verlängerung an).
+
+- Schutz gegen Überlastungs-Angriffe (DDoS) und unbegrenzter Datenverkehr sind im kostenlosen Tarif enthalten.
+- Die Datei `_headers` setzt Sicherheits-Header (HTTPS erzwingen, Klickjacking- und MIME-Schutz).
+- Jeder Push auf `main` veröffentlicht automatisch neu.
+- Der Ordner `server/` ist der Team-Server (Node.js) und läuft getrennt auf einem eigenen Rechner/VPS – siehe `server/ANLEITUNG.md`. Die Datei `server/.env` mit Passwörtern/Schlüsseln niemals hochladen (ist in `.gitignore`).
